@@ -43,44 +43,6 @@ log = get_logger()
 log.info("starting")
 
 
-# Parameters
-lam = 1.0
-k_out = 2 * np.pi / lam
-
-# dipole orientation
-p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
-p_hat /= (np.linalg.norm(p_hat) + 1e-15)
-
-# atoms: 2D lattice
-Nx, Ny = 10,10
-Nz = 10
-#    # Interdistance
-dx = dy = dz= 0.5 * lam
-#r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
-r_xyz = random_position(400, plane_restricted= False)
-
-# Atom velocities: 
-v_xyz = None #  random_velocity_thermal(r_xyz)
-
-# weights: Gaussian beam envelope
-w0 = 10.0 # weist
-k_in= 1
-k_in_dir = np.array([0,0.0, 1.0]) # Incident beam k_vector
-k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15)
-
-
-w = gaussian_weights(r_xyz, w0, k_in_hat)
-
-# angle grid
-theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
-
-print(f"dipole vector nhat = {p_hat}")
-print(f"Incident wave k_in ={ k_in_hat}")
-print(f"atom distributions: Nx ={Nx}, Ny={Ny}, Nz={Nz}")
-print(f"Interatomic distance: {dx}")
-
-alpha = 1.0  # radius scaling for 3D plot
-
 #################################################################################
 # Array factor
 def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
@@ -170,6 +132,48 @@ def sanity_printing():
     print("  I(+x):", get_I_at(np.pi/2, 0.0))
     print("  I(+y):", get_I_at(np.pi/2, np.pi/2))
     print("  I(+z):", get_I_at(0.0, 0.0))
+
+################################################################################
+################################################################################
+################################################################################
+
+# Parameters
+lam = 1.0
+k_out = 2 * np.pi / lam
+
+# dipole orientation
+p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
+p_hat /= (np.linalg.norm(p_hat) + 1e-15)
+
+# atoms: 2D lattice
+Nx = 10  
+Ny = 10
+Nz = 10
+#    # Interdistance
+dx = dy = dz= 0.5 * lam
+#r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
+r_xyz = random_position(400, plane_restricted= False)
+
+# Atom velocities: 
+v_xyz = None #  random_velocity_thermal(r_xyz)
+
+# weights: Gaussian beam envelope
+w0 = 10.0 # weist
+k_in= 1
+k_in_dir = np.array([0,0.0, 1.0]) # Incident beam k_vector
+k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15)
+
+
+w = gaussian_weights(r_xyz, w0, k_in_hat)
+
+print(f"dipole vector nhat = {p_hat}")
+print(f"Incident wave k_in ={ k_in_hat}")
+print(f"atom distributions: Nx ={Nx}, Ny={Ny}, Nz={Nz}")
+print(f"Interatomic distance: {dx}")
+
+alpha = 1.0  # radius scaling for 3D plot
+# angle grid
+theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
 
 
 # Compute
