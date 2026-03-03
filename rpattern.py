@@ -76,7 +76,7 @@ def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
 
     if w is None:
         w = np.ones(N, dtype=np.complex128)
-        log.info("AF: Weights None") 
+        log.i-nfo("AF: Weights None") 
     else:
         w = np.asarray(w, dtype=np.complex128)
         log.info("AF: Weights provided")
@@ -143,38 +143,49 @@ k_out = 2 * np.pi / lam
 
 # dipole orientation
 p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
-p_hat /= (np.linalg.norm(p_hat) + 1e-15)
 
-# atoms: 2D lattice
+# atoms: 2D lattice / Number of atoms.
 Nx = 10  
 Ny = 10
 Nz = 10
-#    # Interdistance
+
+N = Nx*Ny*Nz
+
+## Atomic Interdistance
 dx = dy = dz= 0.5 * lam
-#r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
-r_xyz = random_position(400, plane_restricted= False)
 
-# Atom velocities: 
-v_xyz = None #  random_velocity_thermal(r_xyz)
-
-# weights: Gaussian beam envelope
-w0 = 10.0 # weist
-k_in= 1
-k_in_dir = np.array([0,0.0, 1.0]) # Incident beam k_vector
-k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15)
-
-
-w = gaussian_weights(r_xyz, w0, k_in_hat)
-
-print(f"dipole vector nhat = {p_hat}")
-print(f"Incident wave k_in ={ k_in_hat}")
-print(f"atom distributions: Nx ={Nx}, Ny={Ny}, Nz={Nz}")
-print(f"Interatomic distance: {dx}")
+# Array factor weights: Gaussian beam envelope
+w0 = 10.0 # waist
+k_in= 1   # wavevector magnitude
+k_in_dir = np.array([0.0,3.0, 1.0]) # wavevector direction
 
 alpha = 1.0  # radius scaling for 3D plot
+
+log.info("""==== Paramaters =====
+         lam=%0.3f,
+         Atom number = %d,
+         Dipole vector = %s,
+         Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
+         =====================""", 
+         lam, N, p_hat, w0, k_in, k_in_dir)
+
+# Normalization of vectors
+p_hat /= (np.linalg.norm(p_hat) + 1e-15) # Dipole vector
+k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15) # Incident wave wavevector
+
+# Construction of vectors arrays
+## Position vectors
+r_xyz = random_position(N, plane_restricted= False)
+#r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
+
+## Velocity vectors
+v_xyz = None #  random_velocity_thermal(r_xyz)
+
+## Array factor Weights. 
+w = gaussian_weights(r_xyz, w0, k_in_hat)
+
 # angle grid
 theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
-
 
 # Compute
 # ----------------------------

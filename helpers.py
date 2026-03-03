@@ -5,6 +5,26 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import logging
+
+def get_logger(name="helpers", level=logging.INFO):
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Prevent messages from being passed to the root logger
+    logger.propagate = False
+
+    # Add handler only once (avoid duplicate lines in notebooks / reruns)
+    if not logger.handlers:
+        h = logging.StreamHandler()
+        fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+                                datefmt="%H:%M:%S")
+        h.setFormatter(fmt)
+        logger.addHandler(h)
+
+    return logger
+
+log = get_logger()
 
 # Angle grids / directions
 def make_angle_grid(n_theta=241, n_phi=481):
@@ -21,6 +41,8 @@ def make_angle_grid(n_theta=241, n_phi=481):
     nx = np.sin(TH) * np.cos(PH)
     ny = np.sin(TH) * np.sin(PH)
     nz = np.cos(TH)
+
+    log.info("Building angle grid. Resolution %d x %d", n_theta, n_phi) 
     return theta, phi, nx, ny, nz
 
 # Dipole pattern
@@ -40,6 +62,8 @@ def single_dipole_E(nx, ny, nz, p_hat = PZ_HAT):
     Ex = p_hat[0] - nx * ndotp
     Ey = p_hat[1] - ny * ndotp
     Ez = p_hat[2] - nz * ndotp
+    
+    log.info("Construction of single dipole pattern. Dipole vector %s", p_hat)
     return Ex.astype(np.complex128), Ey.astype(np.complex128), Ez.astype(np.complex128)
 
 
@@ -51,11 +75,12 @@ def intensity_from_field(AF, nx, ny, nz, p_hat):
     Ex = AF * Ex_s
     Ey = AF * Ey_s
     Ez = AF * Ez_s
+    log.info("Computing intensity from field: E shape=%s.", AF.shape)
     return (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
 
 
 # Atom layouts + weights
-def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane=True):
+def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=True):
     """
     Centered grid positions as an (N,3) array.
 
@@ -74,6 +99,8 @@ def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane=True):
     z = (np.arange(Nz) - (Nz - 1) / 2.0) * dz + z0
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
     r_xyz = np.column_stack((X.ravel(), Y.ravel(), Z.ravel()))
+
+    log.info("Construction position vector: GRID: Nx=%d, Ny=%d, Nz=%d, spacing=%.3f lambda, N=%d, r_xyz shape=%s, Plane_restricted  = %s", Nx, Ny, Nz, spacinga, r_xyz.shape[0], r_xyz.shape, plane)
     return r_xyz
 
 
@@ -106,6 +133,8 @@ def random_position(N, box_size=(1.0, 1.0, 1.0), center=(0.0, 0.0, 0.0), seed=0,
         z = rng.uniform(-Lz / 2, Lz / 2, size=N) + cz
 
     r_xyz = np.column_stack([x, y, z])
+
+    log.info("Construction vector position: RANDOM. N =%d, box_size = %s, plane_restricted = %s.", N, box_size, plane_restricted)
     return r_xyz
 
 def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=True):
@@ -130,7 +159,7 @@ def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=True):
 
     if plane_restricted:
         v_xyz[:, 2] = 0.0
-
+    log.info("Cosntruction velocity vectors: Thermal distribution. v_std = %0.3f", v_std)
     return v_xyz
 
 
@@ -152,6 +181,8 @@ def gaussian_weights(r_xyz, w0, k_in_hat, k_in=1.0):
 
     env = np.exp(-(x**2 + y**2) / (w0**2))
     phase = np.exp(1j * k_in * (k_in_hat[0]*x + k_in_hat[1]*y + k_in_hat[2]*z))
+
+    log.info("Computing gaussian weights: waist=%d, wavevector = %0.3f %s",w0,k_in, k_in_hat) 
 
     return (env * phase).astype(np.complex128)
 
