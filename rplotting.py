@@ -13,6 +13,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+import logging
+log = logging.getLogger(__name__)
+
 # Plotting
 def plot_pattern_3d(nx, ny, nz, I, title="", alpha=1.0, stride=2, cmap="viridis"):
     """
@@ -40,6 +43,8 @@ def plot_pattern_3d(nx, ny, nz, I, title="", alpha=1.0, stride=2, cmap="viridis"
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
+
+    log.info("Plotting pattern 3D. Title = %s", title)
     return fig, ax
 
 def _wrap_to_pi(angle_rad: np.ndarray) -> np.ndarray:
@@ -176,6 +181,7 @@ def plot_planar_cuts(theta, phi, I, title_prefix=""):
     #axes[2].set_rlim(0, rmax)
 
     fig.tight_layout()
+    log.info("Plotting plannar cut.")
     return fig, axes
 def plot_atoms(
     r_xyz,
@@ -328,5 +334,6 @@ def plot_atoms(
     if legend_items:
         ax.legend(handles=legend_items, loc="upper right")
 
-    plt.tight_layout()
+    plt.tight_layout()  
+    log.info("Plotting atom position. Title = %s", title) 
     return fig, ax
