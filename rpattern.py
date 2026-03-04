@@ -40,7 +40,7 @@ def get_logger(name="rpattern", level=logging.INFO):
 
 log = get_logger()
 
-log.info("starting")
+log.info("starting rpattern. NO time dependence. Static positon.")
 
 
 #################################################################################
