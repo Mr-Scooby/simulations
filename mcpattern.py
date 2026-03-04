@@ -20,6 +20,10 @@ from helpers import (
     random_velocity_thermal,
 )
 
+from rpattern import (
+    array_factor_general
+    )
+
 from rplotting import (
     plot_pattern_3d,
     plot_planar_cuts,
@@ -29,7 +33,7 @@ from rplotting import (
 
 # ---------------------------------------------------------------------
 # Logging
-def get_logger(name="mc_af", level=logging.INFO):
+def get_logger(name="mcpattern", level=logging.INFO):
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.propagate = False 
@@ -53,6 +57,8 @@ def positions_at_time(r0_xyz: np.ndarray, v_xyz: np.ndarray, t: float) -> np.nda
     """Ballistic motion: r(t) = r0 + v*t."""
     r0_xyz = np.asarray(r0_xyz, dtype=float)
     v_xyz = np.asarray(v_xyz, dtype=float)
+
+    log.info("Update position. time: %f", t)
     return r0_xyz + v_xyz * float(t)
 
 
@@ -83,46 +89,36 @@ def array_factor_general_time(
     Returns
     - AF: (nt,np) complex
     """
-    nt, np_ = nx.shape
+    # Fetch initial position and velocity vectors
     r0_xyz = np.asarray(r0_xyz, dtype=float)
     v_xyz = np.asarray(v_xyz, dtype=float)
 
+    # Check sizes
     if v_xyz.shape != r0_xyz.shape:
         raise ValueError(f"v_xyz must have shape {r0_xyz.shape}, got {v_xyz.shape}")
 
-    N = r0_xyz.shape[0]
-
-    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)  # (M,3)
-    M = n_hat_flat.shape[0]
-    AF_flat = np.zeros(M, dtype=np.complex128)
-
+    # Calculate new position vectors for time t. 
     r_t = positions_at_time(r0_xyz, v_xyz, t)
 
+    # Calculate weights.
     if w_fn is None:
         w_t = np.ones(N, dtype=np.complex128)
     else:
         w_t = np.asarray(w_fn(r_t, t), dtype=np.complex128)
-        if w_t.shape != (N,):
-            raise ValueError(f"w_fn must return shape (N,), got {w_t.shape}")
 
-    for a0 in range(0, N, chunk_atoms):
-        r = r_t[a0:a0 + chunk_atoms]         # (C,3)
-        ww = w_t[a0:a0 + chunk_atoms]        # (C,)
-        dots = (k_out * n_hat_flat) @ r.T    # (M,C)
-        AF_flat += np.exp(1j * dots) @ ww
-
-    return AF_flat.reshape(nt, np_)
+    log.info("AF time step t = %f", t)
+    return array_factor_general(nx,ny,nz,k_out, r_t, w_t, chunk_atoms)
 
 
 # ---------------------------------------------------------------------
 # Monte Carlo driver
-# ---------------------------------------------------------------------
 
 def make_weight_fn_gaussian_beam(w0: float, k_in_hat: np.ndarray, k_in: float = 1.0):
     """
     Returns a w_fn(r_t, t) that uses your existing gaussian_weights(r_xyz, w0, k_in_hat).
     If your gaussian_weights has extra args (like k_in), adapt inside this function.
     """
+    log.info("Time dependent weight")
     k_in_hat = np.asarray(k_in_hat, dtype=float)
     k_in_hat = k_in_hat / (np.linalg.norm(k_in_hat) + 1e-15)
 
@@ -131,7 +127,6 @@ def make_weight_fn_gaussian_beam(w0: float, k_in_hat: np.ndarray, k_in: float = 
         return gaussian_weights(r_t, w0, k_in_hat)  # <-- adjust if your signature differs
 
     return w_fn
-
 
 def mc_intensity_time_series(
     theta: np.ndarray,
@@ -165,52 +160,76 @@ def mc_intensity_time_series(
     Returns
     - I_mean: (T, n_theta, n_phi)
     """
+    t_start = time.time()
+
     times = np.asarray(times, dtype=float)
     T = times.size
     nt, np_ = nx.shape
 
-    I_accum = np.zeros((T, nt, np_), dtype=float)
+    log.info(
+        "mc_intensity_moving_atoms start: n_mc=%d, n_atoms=%d, T=%d, grid=(%d,%d), chunk_atoms=%d, v_std=%.3g, plane=%s, normalize_each_time=%s",
+        n_mc, n_atoms, T, nt, np_, chunk_atoms, v_std, plane_restricted, normalize_each_time
+    )
 
+    I_accum = np.zeros((T, nt, np_), dtype=float)
     rng_master = np.random.default_rng(seed)
 
     for mc in range(n_mc):
         rng = np.random.default_rng(rng_master.integers(0, 2**63 - 1))
 
-        # Your helpers create one realization
+        # Sample one realization of initial positions and velocities.
         r0_xyz = np.asarray(random_position(n_atoms), dtype=float)
         v_xyz = np.asarray(
-            random_velocity_thermal(r0_xyz, v_std=v_std, seed=int(rng.integers(1_000_000_000)), plane_restricted=plane_restricted),
-            dtype=float
+            random_velocity_thermal(
+                r0_xyz,
+                v_std=v_std,
+                seed=int(rng.integers(1_000_000_000)),
+                plane_restricted=plane_restricted,
+            ),
+            dtype=float,
         )
 
+        # Build a per-realization weight function if a factory is provided.
         w_fn = None if (w_fn_factory is None) else w_fn_factory(rng)
 
-        t0 = time.time()
+        t_mc = time.time()
         for it, t in enumerate(times):
+            # Compute the time-dependent array factor for all observation directions.
             AF_t = array_factor_general_time(
                 nx, ny, nz, k_out,
                 r0_xyz, v_xyz, t,
                 w_fn=w_fn,
-                chunk_atoms=chunk_atoms
+                chunk_atoms=chunk_atoms,
             )
+
+            # Convert field-like quantity into intensity including dipole/polarization effects.
             I_t = intensity_from_field(AF_t, nx, ny, nz, p_hat)
             I_t = np.asarray(I_t, dtype=float)
 
+            # Normalize each snapshot by its own maximum if requested.
             if normalize_each_time:
                 I_t = I_t / (I_t.max() + 1e-15)
 
+            # Accumulate intensity for later averaging across realizations.
             I_accum[it] += I_t
 
-        dt = time.time() - t0
-        log.info("mc %d/%d done (N=%d, T=%d) in %.2fs", mc + 1, n_mc, n_atoms, T, dt)
+        log.info(
+            "mc %d/%d done in %.2fs (N=%d, T=%d)",
+            mc + 1, n_mc, time.time() - t_mc, n_atoms, T
+        )
 
     I_mean = I_accum / float(n_mc)
-    return I_mean
 
+    log.info(
+        "mc_intensity_moving_atoms end: total=%.2fs, avg_per_mc=%.2fs",
+        time.time() - t_start,
+        (time.time() - t_start) / max(float(n_mc), 1.0),
+    )
+
+    return I_mean
 
 # ---------------------------------------------------------------------
 # Example main
-# ---------------------------------------------------------------------
 
 def main():
     lam = 1.0
@@ -232,6 +251,16 @@ def main():
     w0 = 10.0
     k_in_hat = np.array([0.0, 0.0, 1.0], dtype=float)
     k_in = 1.0  # keep consistent with how gaussian_weights was designed
+
+    log.info("""==== Paramaters =====
+             lam=%0.3f,
+             Atom number = %d,
+             Dipole vector = %s,
+             Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
+             =====================""", 
+             lam, n_atoms, p_hat, w0, k_in, k_in_hat)
+    
+
 
     def w_fn_factory(rng):
         _ = rng
@@ -278,4 +307,6 @@ def main():
 
 
 if __name__ == "__main__":
+
+    log.info("Starting mcpattern. TIME DEPENDENC MC SIMULATION")
     main()

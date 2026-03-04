@@ -105,6 +105,7 @@ def centered_indices(N):
     return np.arange(N) - (N - 1)/2
 
 def array_factor_separable(nx, ny, nz, k, dx, dy, dz, Nx, Ny, Nz):
+    log.info("AF separable")
     mx = centered_indices(Nx)[:, None, None]
     my = centered_indices(Ny)[:, None, None]
     mz = centered_indices(Nz)[:, None, None]
