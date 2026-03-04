@@ -32,7 +32,7 @@ from rplotting import (
 def get_logger(name="mc_af", level=logging.INFO):
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    logger.propagate = False
+    logger.propagate = False 
 
     if logger.handlers:
         return logger
@@ -230,7 +230,7 @@ def main():
 
     # Incident beam parameters for weights
     w0 = 10.0
-    k_in_hat = np.array([1.0, 0.0, 0.0], dtype=float)
+    k_in_hat = np.array([0.0, 0.0, 1.0], dtype=float)
     k_in = 1.0  # keep consistent with how gaussian_weights was designed
 
     def w_fn_factory(rng):
@@ -271,6 +271,7 @@ def main():
     it = -1
     I_plotT = I_mean[it] / (np.max(I_mean[it]) + 1e-15)
     plot_planar_cuts(theta, phi, I_plotT, title_prefix=f"MC mean, t={times[it]:.3g}")
+    plot_pattern_3d(nx, ny, nz, I_plotT, title=f"MC mean pattern, t={times[it]:.3g}", alpha=1.0, stride=2)
 
     plt = __import__("matplotlib.pyplot", fromlist=["show"])
     plt.show()
