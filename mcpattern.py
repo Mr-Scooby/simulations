@@ -59,57 +59,6 @@ def positions_at_time(r0_xyz: np.ndarray, v_xyz: np.ndarray, t: float) -> np.nda
     return r0_xyz + v_xyz * float(t)
 
 
-def array_factor_general_time(
-    nx: np.ndarray,
-    ny: np.ndarray,
-    nz: np.ndarray,
-    k_out: float,
-    r0_xyz: np.ndarray,
-    v_xyz: np.ndarray,
-    t: float,
-    w_fn=None,
-    chunk_atoms: int = 20000,
-) -> np.ndarray:
-    """
-    Time-dependent general array factor:
-      AF(n_hat,t) = sum_j w_j(t) * exp(i k_out * n_hat · r_j(t))
-
-    Inputs
-    - nx,ny,nz: (nt,np) direction cosines
-    - k_out: scalar wavenumber
-    - r0_xyz: (N,3) initial positions
-    - v_xyz:  (N,3) velocities
-    - t: scalar time
-    - w_fn: callable w_fn(r_t, t) -> (N,) complex, or None for all ones
-    - chunk_atoms: chunk size for atom summation
-
-    Returns
-    - AF: (nt,np) complex
-    """
-    # Fetch initial position and velocity vectors
-    r0_xyz = np.asarray(r0_xyz, dtype=float)
-    v_xyz = np.asarray(v_xyz, dtype=float)
-
-    # Check sizes
-    if v_xyz.shape != r0_xyz.shape:
-        raise ValueError(f"v_xyz must have shape {r0_xyz.shape}, got {v_xyz.shape}")
-
-    # Calculate new position vectors for time t. 
-    r_t = positions_at_time(r0_xyz, v_xyz, t)
-
-    # Calculate weights.
-    if w_fn is None:
-        w_t = np.ones(N, dtype=np.complex128)
-    else:
-        w_t = np.asarray(w_fn(r_t, t), dtype=np.complex128)
-
-    log.info("AF time step t = %f", t)
-    return array_factor_general(nx,ny,nz,k_out, r_t, w_t, chunk_atoms)
-
-
-# ---------------------------------------------------------------------
-# Monte Carlo driver
-
 def make_weight_fn_gaussian_beam(w0: float, k_in_hat: np.ndarray, k_in: float = 1.0):
     """
     Returns a w_fn(r_t, t) that uses your existing gaussian_weights(r_xyz, w0, k_in_hat).
@@ -124,6 +73,224 @@ def make_weight_fn_gaussian_beam(w0: float, k_in_hat: np.ndarray, k_in: float = 
         return gaussian_weights(r_t, w0, k_in_hat)  # <-- adjust if your signature differs
 
     return w_fn
+
+def sample_realization(n_atoms, v_std, plane_restricted, rng):
+    """Sample initial positions and velocities for one MC realization."""
+    # Sample one realization of initial positions and velocities.
+    log.info("Generating random sample")
+    r0_xyz = np.asarray(random_position(n_atoms, seed=int(rng.integers(0, 2**32))) , dtype=float)
+    v_xyz = np.asarray(
+        random_velocity_thermal(r0_xyz,v_std=v_std,seed=int(rng.integers(2**32)),
+                                plane_restricted=plane_restricted),
+        dtype=float)
+
+    return r0_xyz, v_xyz
+
+
+def weight_evolution(r_xyz, t) -> np.ndarray: 
+    """computes the weights factors for time t
+    
+    iputs: 
+    r_xyz: np.ndarry (N,3). with the atoms position.
+    t: float, time step. 
+
+    output:
+    w: np.ndarray (N,3) weights updated"""
+
+    return np.ones(r_xyz.shape[0], dtype=complex)
+
+def compute_realization_intensity_series(nx, ny, nz, k_out: float,
+                                        p_hat: np.ndarray, times: np.ndarray,
+                                         n_atoms:int, v_std: float, rng:np.random, plane_restricted: bool, 
+                                        w_fn = weight_evolution , chunk_atoms: int = 20000,
+                                        normalize_each_time: bool = False,
+                                        ) -> np.ndarray:
+    """
+    Compute the intensity time series for one realization of moving atoms.
+
+    Parameters
+    ----------
+    nx, ny, nz : np.ndarray
+        Direction cosine grids for the observation directions.
+    k_out : float
+        Output wave number.
+    p_hat : np.ndarray
+        Dipole polarization / orientation unit vector.
+
+    n_atoms: int 
+        number of atoms
+    v_std: float
+        velocity standard deviation
+    plane_restricted: Bool
+        Dimension restricted to 2D. 
+    times : np.ndarray
+        Times at which the intensity is evaluated.
+    rng: np.random 
+        Radom generator object
+    w_fn : callable or None, optional
+        Weight function w_fn(r_t, t) for this realization. If None, unit weights are used.
+    chunk_atoms : int, optional
+        Number of atoms per chunk in the array factor calculation.
+    normalize_each_time : bool, optional
+        If True, normalize each time snapshot by its own maximum.
+
+    Returns
+    -------
+    np.ndarray
+        Intensity array with shape (T, n_theta, n_phi).
+    """
+
+    # time array
+    times = np.asarray(times, dtype=float)
+    T = times.size
+    nt, np_ = nx.shape
+
+    # Sample atoms and velocity
+    r0_xyz, v_xyz = sample_realization(n_atoms, v_std, plane_restricted, rng)
+    
+    # memory assignation
+    I_series = np.zeros((T, nt, np_), dtype=float)
+
+    log.info(
+        "compute_realization_intensity_series : N=%d, T=%d, grid=(%d,%d), chunk_atoms=%d, normalize_each_time=%s",
+        len(r0_xyz), T, nt, np_, chunk_atoms, normalize_each_time
+    )
+    for it, t in enumerate(times):
+        
+        # evolve positions.
+        rt_xyz = positions_at_time(r0_xyz, v_xyz, t)
+        # evolve weights
+        wt = weight_evolution(rt_xyz,t)
+
+        # compute array factor
+        AF_t = array_factor_general(
+            nx, ny, nz, k_out,
+            rt_xyz,
+            w = wt,
+            chunk_atoms=chunk_atoms,
+        )
+
+        # compute intensity.
+        I_t = intensity_from_field(AF_t, nx, ny, nz, p_hat)
+        I_t = np.asarray(I_t, dtype=float)
+
+        if normalize_each_time:
+            I_t = I_t / (I_t.max() + 1e-15)
+
+        I_series[it] = I_t
+
+    return I_series
+
+
+
+def mc_sim( nx, ny, nz,
+    k_out: float, p_hat: np.ndarray,
+    times: np.ndarray,
+    n_mc: int,
+    n_atoms: int, v_std: float = 0.01,
+    plane_restricted: bool = True,
+    chunk_atoms: int = 20000, seed: int = 0,
+    normalize_each_time: bool = False,
+    w_fn=weight_evolution,
+) -> np.ndarray:
+    """
+    Monte Carlo average of the intensity time series for moving atoms.
+
+    Each realization samples a new atomic configuration internally and
+    computes its intensity time series. The result returned here is the
+    average over all realizations.
+
+    Parameters
+    ----------
+    nx, ny, nz : np.ndarray
+        Direction cosine grids for the observation directions.
+    k_out : float
+        Output wave number.
+    p_hat : np.ndarray
+        Dipole orientation / polarization vector.
+    times : np.ndarray
+        Times at which the intensity is evaluated.
+    n_mc : int
+        Number of Monte Carlo realizations.
+    n_atoms : int
+        Number of atoms in each realization.
+    v_std : float, optional
+        Thermal velocity spread used when sampling each realization.
+    plane_restricted : bool, optional
+        Whether sampled velocities are restricted to a plane.
+    chunk_atoms : int, optional
+        Chunk size used in the array factor calculation.
+    seed : int, optional
+        Master seed for reproducible Monte Carlo sampling.
+    normalize_each_time : bool, optional
+        If True, normalize each time snapshot by its own maximum before averaging.
+    w_fn_factory : callable or None, optional
+        Callable with signature w_fn_factory(rng) -> w_fn(r_t, t).
+        If None, unit weights are used.
+
+    Returns
+    -------
+    np.ndarray
+        Monte Carlo averaged intensity series with shape (T, n_theta, n_phi).
+    """
+    times = np.asarray(times, dtype=float)
+    T = times.size
+    nt, np_ = nx.shape
+
+    log.info(
+        "mc_sim: n_mc=%d, n_atoms=%d, T=%d, grid=(%d,%d), "
+        "chunk_atoms=%d, v_std=%.3g, plane_restricted=%s, normalize_each_time=%s",
+        n_mc, n_atoms, T, nt, np_, chunk_atoms, v_std,
+        plane_restricted, normalize_each_time,
+    )
+
+    I_accum = np.zeros((T, nt, np_), dtype=float)
+    # Random generator object
+    # helps to reproduce runs. 
+    rng_master = np.random.default_rng(seed)
+    # time to measure how long it takes. 
+    t_start = time.time()
+
+    # Runs of the simulation
+    for mc in range(n_mc):
+        # each simulation time keeper
+        t_mc = time.time()
+
+        # Independent RNG for this realization.
+        rng = np.random.default_rng(rng_master.integers(0, 2**32))
+
+        I_mc = compute_realization_intensity_series(
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            k_out=k_out,
+            p_hat=p_hat,
+            times=times,
+            n_atoms = n_atoms,
+            rng=rng,
+            v_std=v_std,
+            plane_restricted=plane_restricted,
+            chunk_atoms=chunk_atoms,
+            normalize_each_time=normalize_each_time,
+            w_fn=w_fn,
+        )
+
+        I_accum += I_mc
+
+        log.info(
+            "mc run %d/%d done in %.2fs",
+            mc + 1, n_mc, time.time() - t_mc
+        )
+
+    I_mean = I_accum / float(n_mc)
+
+    log.info(
+        "mc_intensity_time_series end: total=%.2fs, avg_per_mc=%.2fs",
+        time.time() - t_start,
+        (time.time() - t_start) / max(float(n_mc), 1.0),
+    )
+
+    return I_mean
 
 def mc_intensity_time_series(
     theta: np.ndarray,
@@ -169,19 +336,23 @@ def mc_intensity_time_series(
         n_mc, n_atoms, T, nt, np_, chunk_atoms, v_std, plane_restricted, normalize_each_time
     )
 
-    I_accum = np.zeros((T, nt, np_), dtype=float)
-    rng_master = np.random.default_rng(seed)
+    I_accum = np.zeros((T, nt, np_), dtype=float) # Acumulated intensity array 
+    rng_master = np.random.default_rng(seed) # random number generator object
 
+
+    # Montecarlo realization:
     for mc in range(n_mc):
-        rng = np.random.default_rng(rng_master.integers(0, 2**63 - 1))
+        # New random generator for each MC simulation.
+        # each mcsimulation is independent but reproducible. 
+        rng = np.random.default_rng(rng_master.integers(0, 2**32)) 
 
         # Sample one realization of initial positions and velocities.
-        r0_xyz = np.asarray(random_position(n_atoms), dtype=float)
+        r0_xyz = np.asarray(random_position(n_atoms, seed=int(rng.integers(0, 2**32))), dtype=float)
         v_xyz = np.asarray(
             random_velocity_thermal(
                 r0_xyz,
                 v_std=v_std,
-                seed=int(rng.integers(1_000_000_000)),
+                seed=int(rng.integers(2**32)),
                 plane_restricted=plane_restricted,
             ),
             dtype=float,
