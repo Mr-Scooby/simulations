@@ -44,13 +44,17 @@ log.info("rpattern.py loaded")
 
 #################################################################################
 # Array factor
-def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
+# Flatten directions: n_hat_flat (M,3), M=nt*np
+#n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+
+def array_factor_general(n_hat_flat,nx , k_out, r_xyz, w=None, chunk_atoms=20000):
     """
     General array factor:
         AF(n_hat) = sum_j w_j * exp(i k_out n_hat · r_j)
 
     Inputs:
-      nx,ny,nz : (nt,np) direction cosines on the sphere
+      n_hat:_flat: (M,3) array: shpuld be np.stack[nx,ny,nz]: (nt,np) direction cosines on the sphere  #n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+      nx: (nt, np_) direction cosine. LAter for reshape. 
       k_out        : scalar wave number
       r_xyz    : (N,3) atom positions
       w        : (N,) complex weights (amplitude*exp(i phase)). If None -> all ones.
@@ -62,8 +66,6 @@ def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
     nt, np_ = nx.shape
     N = r_xyz.shape[0]
 
-    # Flatten directions: n_hat_flat (M,3), M=nt*np
-    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
     M = n_hat_flat.shape[0]
     
     # Assign memory 

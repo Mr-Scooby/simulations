@@ -61,19 +61,15 @@ def single_dipole_E(nx, ny, nz, p_hat = PZ_HAT):
     Ez = p_hat[2] - nz * ndotp
     
     log.info("Construction of single dipole pattern. Dipole vector %s", p_hat)
-    return Ex.astype(np.complex128), Ey.astype(np.complex128), Ez.astype(np.complex128)
+    return (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
 
 
-def intensity_from_field(AF, nx, ny, nz, p_hat):
+def intensity_from_field(AF, dipole):
     """
     I = |E|^2 where E = AF * E_single_dipole
     """
-    Ex_s, Ey_s, Ez_s = single_dipole_E(nx, ny, nz, p_hat)
-    Ex = AF * Ex_s
-    Ey = AF * Ey_s
-    Ez = AF * Ez_s
     log.info("Computing intensity from field: E shape=%s.", AF.shape)
-    return (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
+    return np.abs(AF)**2 * dipole 
 
 
 # Atom layouts + weights

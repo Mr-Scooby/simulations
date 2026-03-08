@@ -15,6 +15,7 @@ from helpers import (
     intensity_from_field,
     random_position,
     random_velocity_thermal,
+    single_dipole_E
 )
 
 from rpattern import (
@@ -99,7 +100,7 @@ def weight_evolution(r_xyz, t) -> np.ndarray:
 
     return np.ones(r_xyz.shape[0], dtype=complex)
 
-def compute_realization_intensity_series(nx, ny, nz, k_out: float,
+def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_out: float,
                                         p_hat: np.ndarray, times: np.ndarray,
                                          n_atoms:int, v_std: float, rng:np.random, plane_restricted: bool, 
                                         w_fn = weight_evolution , chunk_atoms: int = 20000,
@@ -110,8 +111,10 @@ def compute_realization_intensity_series(nx, ny, nz, k_out: float,
 
     Parameters
     ----------
-    nx, ny, nz : np.ndarray
-        Direction cosine grids for the observation directions.
+    n_hat_flat : np.ndarray
+        stack array of the irection cosine grids for the observation directions.
+    nx: array 
+        for shape later 
     k_out : float
         Output wave number.
     p_hat : np.ndarray
@@ -145,6 +148,7 @@ def compute_realization_intensity_series(nx, ny, nz, k_out: float,
     T = times.size
     nt, np_ = nx.shape
 
+    
     # Sample atoms and velocity
     r0_xyz, v_xyz = sample_realization(n_atoms, v_std, plane_restricted, rng)
     
@@ -164,14 +168,14 @@ def compute_realization_intensity_series(nx, ny, nz, k_out: float,
 
         # compute array factor
         AF_t = array_factor_general(
-            nx, ny, nz, k_out,
+            n_hat_flat, nx, k_out,
             rt_xyz,
             w = wt,
             chunk_atoms=chunk_atoms,
         )
 
         # compute intensity.
-        I_t = intensity_from_field(AF_t, nx, ny, nz, p_hat)
+        I_t = intensity_from_field(AF_t,dipole)
         I_t = np.asarray(I_t, dtype=float)
 
         if normalize_each_time:
@@ -244,6 +248,10 @@ def mc_sim( nx, ny, nz,
         plane_restricted, normalize_each_time,
     )
 
+    # Flatten directions: n_hat_flat (M,3), M=nt*np
+    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+    dipole = single_dipole_E(nx,ny,nz, p_hat) 
+
     I_accum = np.zeros((T, nt, np_), dtype=float)
     # Random generator object
     # helps to reproduce runs. 
@@ -259,20 +267,19 @@ def mc_sim( nx, ny, nz,
         # Independent RNG for this realization.
         rng = np.random.default_rng(rng_master.integers(0, 2**32))
 
-        I_mc = compute_realization_intensity_series(
-            nx=nx,
-            ny=ny,
-            nz=nz,
-            k_out=k_out,
-            p_hat=p_hat,
-            times=times,
-            n_atoms = n_atoms,
-            rng=rng,
-            v_std=v_std,
-            plane_restricted=plane_restricted,
-            chunk_atoms=chunk_atoms,
-            normalize_each_time=normalize_each_time,
-            w_fn=w_fn,
+        I_mc = compute_realization_intensity_series(n_hat_flat= n_hat_flat,
+                nx = nx,
+                dipole= dipole, 
+                k_out=k_out,
+                p_hat=p_hat,
+                times=times,
+                n_atoms = n_atoms,
+                rng=rng,
+                v_std=v_std,
+                plane_restricted=plane_restricted,
+                chunk_atoms=chunk_atoms,
+                normalize_each_time=normalize_each_time,
+                w_fn=w_fn,
         )
 
         I_accum += I_mc
