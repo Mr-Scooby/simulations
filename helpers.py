@@ -4,7 +4,6 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import logging
 
 def get_logger(name="helpers", level=logging.INFO):
