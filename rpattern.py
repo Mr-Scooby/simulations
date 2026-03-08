@@ -75,7 +75,7 @@ def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
 
     if w is None:
         w = np.ones(N, dtype=np.complex128)
-        log.i-nfo("AF: Weights None") 
+        log.info("AF: Weights None") 
     else:
         w = np.asarray(w, dtype=np.complex128)
         log.info("AF: Weights provided")

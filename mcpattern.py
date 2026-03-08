@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Monte Carlo simulation for a time-dependent array factor with moving atoms.
 """
@@ -160,6 +157,7 @@ def mc_intensity_time_series(
     Returns
     - I_mean: (T, n_theta, n_phi)
     """
+    # Logging time it takes to run. 
     t_start = time.time()
 
     times = np.asarray(times, dtype=float)
