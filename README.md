@@ -74,14 +74,6 @@ For the Monte Carlo case:
 
 `parameters -> sample atoms -> evolve atoms in time -> array factor -> intensity -> Monte Carlo average -> plots`
 
-## Documentation style recommendation
-A simple and consistent style will make the project easier to maintain:
-
-- Use a short module docstring at the top of each file.
-- Give every important function a docstring stating what it computes, its inputs, and its outputs.
-- Use inline comments only for non-obvious logic or physics assumptions.
-- Keep plotting, physics, and Monte Carlo logic separated by file responsibility.
-
 ## Current structure goal
 The intended separation of responsibilities is:
 
@@ -90,4 +82,4 @@ The intended separation of responsibilities is:
 - Monte Carlo and time dependence in `mcpattern.py`
 - visualization in `rplotting.py`
 
-This separation keeps the project easier to navigate and reduces confusion about where new code should go.
+This separation should keep the project easier to navigate and reduces confusion about where new code should go.
