@@ -12,6 +12,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.animation import FuncAnimation
 
 import logging
 log = logging.getLogger(__name__)
@@ -183,59 +184,74 @@ def plot_planar_cuts(theta, phi, I, title_prefix=""):
     fig.tight_layout()
     log.info("Plotting plannar cut.")
     return fig, axes
-def plot_atoms(
-    r_xyz,
-    title="Atoms",
-    s=3,
-    alpha=0.6,
-    equal_axes=True,
-    # weights
-    w=None,
-    show_colorbar=True,
-    # arrows
-    p_hat=None,
-    k_in_hat=None,
-    arrow_scale=0.25,        # fraction of cloud span used for dipole & k_in arrows
-    v_xyz=None,
-    v_subsample=20,
-    v_arrow_scale=0.08,      # fraction of cloud span used for per-atom velocity arrows
-    seed=0,
-    # limits by count
-    r_subsample=10000,        # max number of atoms to scatter (None means plot all)
-):
-    """
-    3D scatter of atoms with optional weight coloring, dipole arrow, incident k arrow,
-    and per-atom velocity arrows.
 
-    Inputs
-    - r_xyz: (N,3) positions
-    - w: (N,) weights (colored by |w| normalized)
-    - p_hat: (3,) dipole direction
-    - k_in_hat: (3,) incident propagation direction
-    - v_xyz: (N,3) velocities (red arrows, subsampled)
-    - r_subsample: maximum number of atoms to scatter (None means all)
-    - v_subsample: maximum number of velocity arrows to draw
-    """
+
+def _validate_plot_atoms_inputs(r_xyz, w=None, v_xyz=None):
+    """Validate shapes and convert inputs to arrays."""
     r_xyz = np.asarray(r_xyz, dtype=float)
     if r_xyz.ndim != 2 or r_xyz.shape[1] != 3:
-        raise ValueError(f"r_xyz must have shape (N,3), got {r_xyz.shape}")
+        raise ValueError(f"r_xyz must have shape (N, 3), got {r_xyz.shape}")
 
     N = r_xyz.shape[0]
 
     if w is not None:
         w = np.asarray(w)
         if w.shape != (N,):
-            raise ValueError(f"w must be shape (N,), got {w.shape}")
+            raise ValueError(f"w must have shape (N,), got {w.shape}")
 
     if v_xyz is not None:
         v_xyz = np.asarray(v_xyz, dtype=float)
         if v_xyz.shape != r_xyz.shape:
             raise ValueError(f"v_xyz must have shape {r_xyz.shape}, got {v_xyz.shape}")
 
+    return r_xyz, w, v_xyz
+
+
+def _compute_cloud_geometry(r_xyz):
+    """Return center, bounds, and characteristic span of the cloud."""
+    center = np.mean(r_xyz, axis=0)
+    mins = r_xyz.min(axis=0)
+    maxs = r_xyz.max(axis=0)
+
+    # Use the largest extent to keep axis and arrow scaling consistent.
+    span = np.max(maxs - mins)
+    if span <= 0:
+        span = 1.0
+
+    return {
+        "center": center,
+        "mins": mins,
+        "maxs": maxs,
+        "span": span,
+    }
+
+
+def plot_atoms(
+    r_xyz,
+    title="Atoms",
+    s=3,
+    alpha=0.6,
+    equal_axes=True,
+    w=None,
+    show_colorbar=True,
+    p_hat=None,
+    k_in_hat=None,
+    arrow_scale=0.25,
+    v_xyz=None,
+    v_subsample=20,
+    v_arrow_scale=0.08,
+    seed=0,
+    r_subsample=10000,
+):
+    """Plot atoms in 3D with optional weights and direction arrows."""
+    r_xyz, w, v_xyz = _validate_plot_atoms_inputs(r_xyz, w=w, v_xyz=v_xyz)
+    geom = _compute_cloud_geometry(r_xyz)
+
+    N = r_xyz.shape[0]
     rng = np.random.default_rng(seed)
 
-    # ---- Choose which atoms to scatter ----
-    if (r_subsample is None) or (r_subsample >= N):
+    # Subsample atom positions if requested.
+    if r_subsample is None or r_subsample >= N:
         idx_scatter = np.arange(N)
     else:
         idx_scatter = rng.choice(N, size=int(r_subsample), replace=False)
@@ -243,27 +259,20 @@ def plot_atoms(
     r_plot = r_xyz[idx_scatter]
     x, y, z = r_plot[:, 0], r_plot[:, 1], r_plot[:, 2]
 
-    # Center of full cloud (so arrows originate from the real cloud center)
-    c = np.mean(r_xyz, axis=0)
-    cx, cy, cz = c
-
-    # Cloud span computed from full cloud (stable scaling even when scattering a subset)
-    xmin, xmax = r_xyz[:, 0].min(), r_xyz[:, 0].max()
-    ymin, ymax = r_xyz[:, 1].min(), r_xyz[:, 1].max()
-    zmin, zmax = r_xyz[:, 2].min(), r_xyz[:, 2].max()
-    span = max(xmax - xmin, ymax - ymin, zmax - zmin)
-    span = span if span > 0 else 1.0
+    center = geom["center"]
+    mins = geom["mins"]
+    maxs = geom["maxs"]
+    span = geom["span"]
 
     def _norm(v):
+        """Return a safely normalized 3-vector."""
         v = np.asarray(v, dtype=float)
         return v / (np.linalg.norm(v) + 1e-15)
 
-    # ----- Figure -----
     fig = plt.figure(figsize=(7.5, 6.5))
     ax = fig.add_subplot(111, projection="3d")
 
-    # ----- Scatter (optionally colored by weights amplitude) -----
-    sc = None
+    # Scatter atoms, optionally colored by normalized weight magnitude.
     if w is None:
         ax.scatter(x, y, z, s=s, alpha=alpha)
     else:
@@ -271,26 +280,36 @@ def plot_atoms(
         amp = np.abs(w_plot).astype(float)
         amp_norm = amp / (amp.max() + 1e-15)
         sc = ax.scatter(x, y, z, s=s, alpha=alpha, c=amp_norm)
+
         if show_colorbar:
             cb = plt.colorbar(sc, ax=ax, shrink=0.75, pad=0.08)
             cb.set_label("|w| (normalized)")
 
-    # ----- Dipole arrow (blue) -----
-    L = arrow_scale * span
+    # Global direction arrows originate at the cloud center.
+    arrow_len = arrow_scale * span
+
     if p_hat is not None:
         pdir = _norm(p_hat)
-        ax.quiver(cx, cy, cz, pdir[0], pdir[1], pdir[2],
-                  length=L, normalize=True, color="blue")
+        ax.quiver(
+            center[0], center[1], center[2],
+            pdir[0], pdir[1], pdir[2],
+            length=arrow_len,
+            normalize=True,
+            color="blue",
+        )
 
-    # ----- Incident wavevector arrow (purple) -----
     if k_in_hat is not None:
         kdir = _norm(k_in_hat)
-        ax.quiver(cx, cy, cz, kdir[0], kdir[1], kdir[2],
-                  length=L, normalize=True, color="purple")
+        ax.quiver(
+            center[0], center[1], center[2],
+            kdir[0], kdir[1], kdir[2],
+            length=arrow_len,
+            normalize=True,
+            color="purple",
+        )
 
-    # ----- Velocity arrows (red), subsampled -----
+    # Per-atom velocity arrows are drawn on a smaller sampled subset.
     if v_xyz is not None:
-        # Pick velocity arrows from the same scatter subset (so arrows match dots)
         M = idx_scatter.size
         if M > v_subsample:
             idx_local = rng.choice(M, size=int(v_subsample), replace=False)
@@ -300,27 +319,32 @@ def plot_atoms(
 
         rr = r_xyz[idx_vel]
         vv = v_xyz[idx_vel]
+        vel_len = v_arrow_scale * span
 
-        Lv = v_arrow_scale * span
-        ax.quiver(rr[:, 0], rr[:, 1], rr[:, 2],
-                  vv[:, 0], vv[:, 1], vv[:, 2],
-                  length=Lv, normalize=True, color="red", alpha=0.8)
+        ax.quiver(
+            rr[:, 0], rr[:, 1], rr[:, 2],
+            vv[:, 0], vv[:, 1], vv[:, 2],
+            length=vel_len,
+            normalize=True,
+            color="red",
+            alpha=0.8,
+        )
 
-    # ----- Axes styling -----
+    # Axes labels and optional equal scaling.
     ax.set_title(title)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
 
     if equal_axes:
-        cx0, cy0, cz0 = (xmin + xmax) / 2, (ymin + ymax) / 2, (zmin + zmax) / 2
+        c = 0.5 * (mins + maxs)
         half = 0.55 * span
-        ax.set_xlim(cx0 - half, cx0 + half)
-        ax.set_ylim(cy0 - half, cy0 + half)
-        ax.set_zlim(cz0 - half, cz0 + half)
+        ax.set_xlim(c[0] - half, c[0] + half)
+        ax.set_ylim(c[1] - half, c[1] + half)
+        ax.set_zlim(c[2] - half, c[2] + half)
         ax.set_box_aspect((1, 1, 1))
 
-    # ----- Legend (proxy artists) -----
+    # Proxy artists for a compact legend.
     legend_items = []
     if p_hat is not None:
         legend_items.append(Line2D([0], [0], color="blue", lw=3, label="Dipole direction"))
@@ -329,11 +353,91 @@ def plot_atoms(
     if v_xyz is not None:
         legend_items.append(Line2D([0], [0], color="red", lw=3, label=f"Velocities (sampled <= {v_subsample})"))
     if r_subsample is not None:
-        legend_items.append(Line2D([0], [0], color="black", lw=0, marker="o",
-                                   label=f"Atoms plotted: {idx_scatter.size}/{N}"))
+        legend_items.append(
+            Line2D(
+                [0], [0],
+                color="black",
+                lw=0,
+                marker="o",
+                label=f"Atoms plotted: {idx_scatter.size}/{N}",
+            )
+        )
     if legend_items:
         ax.legend(handles=legend_items, loc="upper right")
 
-    plt.tight_layout()  
-    log.info("Plotting atom position. Title = %s", title) 
+    plt.tight_layout()
+    log.info("Plotting atom positions. Title = %s", title)
     return fig, ax
+
+
+#### Animations
+
+# Atoms animation. 
+
+def animation_atoms_with_pulse(r_pos,T, weights: np.array = None, pulse_center:np.array = None ):
+    """ Creates animation of the atoms movements and the pulse traveling trhough the cloud"""
+
+
+    if weights is None: 
+        weights = np.ones(r_pos[0].shape[0])
+        print("weights shape")
+        print(weights.shape)
+        fig, ax = plot_atoms(r_pos[0],w=weights )
+    # Calls atom plot to create the first instance
+    else:   
+        fig, ax = plot_atoms(r_pos[0],w=weights[0] )
+    # Collects the atoms scatter
+    scat = ax.collections[0]
+
+    #Creates pulse center point for tracking. 
+    if pulse_center is not None:
+        pulse_point = ax.scatter(
+            [pulse_center[0, 0]],
+            [pulse_center[0, 1]],
+            [pulse_center[0, 2]],
+            color="red",
+            s=80,
+            marker="o",
+            label="Pulse center",
+        )   
+
+    def update(frame):
+        """ frame update function for the plot_atom 
+            updates atom position and weights and plots the center of the pulse 
+        """
+
+        xyz = r_pos[frame]
+        # update point positions
+        scat._offsets3d = (xyz[:, 0], xyz[:, 1], xyz[:, 2])
+
+        # update colors if needed
+        if weights is not None: 
+            amp = np.abs(weights[frame])**2
+            amp_norm = amp / (amp.max() + 1e-15)
+            scat.set_array(amp_norm)
+
+        # update pulse center
+        if pulse_center is not None: 
+            rp = pulse_center[frame]
+            pulse_point._offsets3d = ([rp[0]], [rp[1]], [rp[2]])
+
+        ax.set_title(f"Frame {frame}")
+        return ax,
+
+    # animation function. 
+    ani = FuncAnimation(
+        fig,
+        update,
+        frames=T,
+        interval=50,
+        blit=False
+    )   
+
+    return  ani
+
+
+
+
+
+
+

@@ -7,8 +7,7 @@ import numpy as np
 import logging 
 
 
-
-log = logging.getlogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def upstream_front_position(center, box_size, k_in_hat, margin=1.0):
@@ -91,9 +90,11 @@ def make_weight_fn_gaussian_pulse(
     k_in_hat = np.asarray(k_in_hat, dtype=float)
     k_in_hat /= (np.linalg.norm(k_in_hat) + 1e-15)
 
+    # Simulation window. 
     center = np.asarray(center, dtype=float)
     box_size = np.asarray(box_size, dtype=float)
 
+    # position of the center of the pulse. 
     r_front0 = upstream_front_position(
         center=center,
         box_size=box_size,
@@ -104,7 +105,7 @@ def make_weight_fn_gaussian_pulse(
     # Optional shift of the pulse center at t=0
     r_front0 = r_front0 + float(pulse_center_t0) * k_in_hat
 
-    def w_fn(r_xyz, t):
+    def w_fn(r_xyz, t, return_pulse_center = False):
         """
         Parameters
         ----------
@@ -140,9 +141,11 @@ def make_weight_fn_gaussian_pulse(
         env_long = np.exp(-(u_par**2) / (sigma_long**2))
 
         # Incident optical phase
-        phase = np.exp(1j * k_in * (r_xyz @ k_in_hat))
-
-        return (env_perp * env_long * phase).astype(np.complex128)
+        phase =  np.exp(1j * k_in * (r_xyz @ k_in_hat))
+        if return_pulse_center == True :
+            return (env_perp * env_long * phase).astype(np.complex128), r_front_t
+        else: 
+            return (env_perp * env_long * phase).astype(np.complex128)
 
     return w_fn
 
