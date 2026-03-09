@@ -4,7 +4,6 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import logging
 
 def get_logger(name="helpers", level=logging.INFO):
@@ -55,8 +54,6 @@ def single_dipole_E(nx, ny, nz, p_hat = PZ_HAT):
     p_hat: (3,) unit vector (or will work if not perfectly unit) as array
     Returns Ex,Ey,Ez complex arrays with same shape as nx.
     """
-    if type(p_hat) != np.array: 
-        p_hat = np.asarray(p_hat, dtype=float)
 
     ndotp = nx * p_hat[0] + ny * p_hat[1] + nz * p_hat[2]
     Ex = p_hat[0] - nx * ndotp
@@ -64,19 +61,15 @@ def single_dipole_E(nx, ny, nz, p_hat = PZ_HAT):
     Ez = p_hat[2] - nz * ndotp
     
     log.info("Construction of single dipole pattern. Dipole vector %s", p_hat)
-    return Ex.astype(np.complex128), Ey.astype(np.complex128), Ez.astype(np.complex128)
+    return (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
 
 
-def intensity_from_field(AF, nx, ny, nz, p_hat):
+def intensity_from_field(AF, dipole):
     """
     I = |E|^2 where E = AF * E_single_dipole
     """
-    Ex_s, Ey_s, Ez_s = single_dipole_E(nx, ny, nz, p_hat)
-    Ex = AF * Ex_s
-    Ey = AF * Ey_s
-    Ez = AF * Ez_s
     log.info("Computing intensity from field: E shape=%s.", AF.shape)
-    return (np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2)
+    return np.abs(AF)**2 * dipole 
 
 
 # Atom layouts + weights
@@ -90,7 +83,7 @@ def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=Tru
     x = (np.arange(Nx) - (Nx - 1) / 2.0) * dx
     y = (np.arange(Ny) - (Ny - 1) / 2.0) * dy
 
-    if plane:
+    if plane_restricted:
         # (Nx*Ny, 3)
         X, Y = np.meshgrid(x, y, indexing="ij")
         r_xyz = np.column_stack((X.ravel(), Y.ravel(), np.full(X.size, float(z0))))
@@ -100,7 +93,7 @@ def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=Tru
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
     r_xyz = np.column_stack((X.ravel(), Y.ravel(), Z.ravel()))
 
-    log.info("Construction position vector: GRID: Nx=%d, Ny=%d, Nz=%d, spacing=%.3f lambda, N=%d, r_xyz shape=%s, Plane_restricted  = %s", Nx, Ny, Nz, spacinga, r_xyz.shape[0], r_xyz.shape, plane)
+    log.info("Construction position vector: GRID: Nx=%d, Ny=%d, Nz=%d, spacing=%.3f lambda, N=%d, r_xyz shape=%s, Plane_restricted  = %s", Nx, Ny, Nz, dx, r_xyz.shape[0], r_xyz.shape, plane_restricted)
     return r_xyz
 
 

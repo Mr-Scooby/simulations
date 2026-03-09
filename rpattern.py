@@ -10,7 +10,8 @@ from helpers import (
     gaussian_weights,
     intensity_from_field,
     random_position, 
-    random_velocity_thermal
+    random_velocity_thermal,
+    single_dipole_E
     )
 
 from rplotting import ( 
@@ -40,18 +41,21 @@ def get_logger(name="rpattern", level=logging.INFO):
 
 log = get_logger()
 
-log.info("starting rpattern. NO time dependence. Static positon.")
-
+log.info("rpattern.py loaded")
 
 #################################################################################
 # Array factor
-def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
+# Flatten directions: n_hat_flat (M,3), M=nt*np
+#n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+
+def array_factor_general(n_hat_flat,nx , k_out, r_xyz, w=None, chunk_atoms=20000):
     """
     General array factor:
         AF(n_hat) = sum_j w_j * exp(i k_out n_hat · r_j)
 
     Inputs:
-      nx,ny,nz : (nt,np) direction cosines on the sphere
+      n_hat:_flat: (M,3) array: shpuld be np.stack[nx,ny,nz]: (nt,np) direction cosines on the sphere  #n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+      nx: (nt, np_) direction cosine. LAter for reshape. 
       k_out        : scalar wave number
       r_xyz    : (N,3) atom positions
       w        : (N,) complex weights (amplitude*exp(i phase)). If None -> all ones.
@@ -63,8 +67,6 @@ def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
     nt, np_ = nx.shape
     N = r_xyz.shape[0]
 
-    # Flatten directions: n_hat_flat (M,3), M=nt*np
-    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
     M = n_hat_flat.shape[0]
     
     # Assign memory 
@@ -76,7 +78,7 @@ def array_factor_general(nx, ny, nz, k_out, r_xyz, w=None, chunk_atoms=20000):
 
     if w is None:
         w = np.ones(N, dtype=np.complex128)
-        log.i-nfo("AF: Weights None") 
+        log.info("AF: Weights None") 
     else:
         w = np.asarray(w, dtype=np.complex128)
         log.info("AF: Weights provided")
@@ -106,6 +108,7 @@ def centered_indices(N):
     return np.arange(N) - (N - 1)/2
 
 def array_factor_separable(nx, ny, nz, k, dx, dy, dz, Nx, Ny, Nz):
+    log.info("AF separable")
     mx = centered_indices(Nx)[:, None, None]
     my = centered_indices(Ny)[:, None, None]
     mz = centered_indices(Nz)[:, None, None]
@@ -134,74 +137,87 @@ def sanity_printing():
     print("  I(+z):", get_I_at(0.0, 0.0))
 
 ################################################################################
+############## TESTING 
 ################################################################################
-################################################################################
 
-# Parameters
-lam = 1.0
-k_out = 2 * np.pi / lam
 
-# dipole orientation
-p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
+if __name__ == "__main__": 
 
-# atoms: 2D lattice / Number of atoms.
-Nx = 10  
-Ny = 10
-Nz = 10
 
-N = Nx*Ny*Nz
+    log.info("starting rpattern. NO time dependence. Static positon.")
 
-## Atomic Interdistance
-dx = dy = dz= 0.5 * lam
+    # Parameters
+    lam = 1.0
+    k_out = 2 * np.pi / lam
+    
+    # dipole orientation
+    p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
+    
+    # atoms: 2D lattice / Number of atoms.
+    Nx = 10  
+    Ny = 10
+    Nz = 10
+    
+    N = Nx*Ny*Nz
+    
+    ## Atomic Interdistance
+    dx = dy = dz= 0.5 * lam
+    
+    # Array factor weights: Gaussian beam envelope
+    w0 = 10.0 # waist
+    k_in= 1   # wavevector magnitude
+    k_in_dir = np.array([0.0,0.0, 1.0]) # wavevector direction
+    
+    alpha = 1.0  # radius scaling for 3D plot
+    
+    log.info("""==== Paramaters =====
+             lam=%0.3f,
+             Atom number = %d,
+             Dipole vector = %s,
+             Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
+             =====================""", 
+             lam, N, p_hat, w0, k_in, k_in_dir)
+    
+    # Normalization of vectors
+    p_hat /= (np.linalg.norm(p_hat) + 1e-15) # Dipole vector
+    k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15) # Incident wave wavevector
+    
+    # Construction of vectors arrays
+    ## Position vectors
+    #r_xyz = random_position(N, plane_restricted= False)
+    r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane_restricted= False)
+    
+    ## Velocity vectors
+    v_xyz = None #  random_velocity_thermal(r_xyz)
+    
+    ## Array factor Weights. 
+    w = gaussian_weights(r_xyz, w0, k_in_hat)
+    
+    # angle grid
+    theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
+    
+    # Falten directions array
+    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
 
-# Array factor weights: Gaussian beam envelope
-w0 = 10.0 # waist
-k_in= 1   # wavevector magnitude
-k_in_dir = np.array([0.0,3.0, 1.0]) # wavevector direction
+    # dipole
+    dipole= single_dipole_E(nx,ny,nz, p_hat) 
 
-alpha = 1.0  # radius scaling for 3D plot
 
-log.info("""==== Paramaters =====
-         lam=%0.3f,
-         Atom number = %d,
-         Dipole vector = %s,
-         Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
-         =====================""", 
-         lam, N, p_hat, w0, k_in, k_in_dir)
-
-# Normalization of vectors
-p_hat /= (np.linalg.norm(p_hat) + 1e-15) # Dipole vector
-k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15) # Incident wave wavevector
-
-# Construction of vectors arrays
-## Position vectors
-r_xyz = random_position(N, plane_restricted= False)
-#r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
-
-## Velocity vectors
-v_xyz = None #  random_velocity_thermal(r_xyz)
-
-## Array factor Weights. 
-w = gaussian_weights(r_xyz, w0, k_in_hat)
-
-# angle grid
-theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
-
-# Compute
-# ----------------------------
-AF = array_factor_general(nx, ny, nz, k_out, r_xyz, w=w, chunk_atoms=20000)
-I = intensity_from_field(AF, nx, ny, nz, p_hat)
-I /= (I.max() + 1e-15)
-
-sanity_printing()
-
-# Plot
-# ----------------------------
-plot_atoms(r_xyz,w=w,p_hat = p_hat, k_in_hat =k_in_hat, v_xyz = v_xyz )
-title = f"Radiation pattern: {Nx}x{Ny}, d={dx/lam:.2f}λ, w0={w0}"
-plot_pattern_3d(nx, ny, nz, I, title=title, alpha=1.0, stride=2)
-
-# Optional: a theta cut at phi=0
-plot_planar_cuts(theta, phi, I, title_prefix="Theta cut (phi=0)")
-
-plt.show()
+    # Compute
+    # ----------------------------
+    AF = array_factor_general(n_hat_flat, nz, k_out, r_xyz, w=w, chunk_atoms=20000)
+    I = intensity_from_field(AF, dipole)
+    I /= (I.max() + 1e-15)
+#    
+#    sanity_printing()
+    
+    # Plot
+    # ----------------------------
+    plot_atoms(r_xyz,w=w,p_hat = p_hat, k_in_hat =k_in_hat, v_xyz = v_xyz )
+    title = f"Radiation pattern: {Nx}x{Ny}, d={dx/lam:.2f}λ, w0={w0}"
+    plot_pattern_3d(nx, ny, nz, I, title=title, alpha=1.0, stride=2)
+#    
+#    # Optional: a theta cut at phi=0
+#    plot_planar_cuts(theta, phi, I, title_prefix="Theta cut (phi=0)")
+#    
+    plt.show()
