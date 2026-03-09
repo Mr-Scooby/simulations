@@ -10,7 +10,8 @@ from helpers import (
     gaussian_weights,
     intensity_from_field,
     random_position, 
-    random_velocity_thermal
+    random_velocity_thermal,
+    single_dipole_E
     )
 
 from rplotting import ( 
@@ -136,8 +137,9 @@ def sanity_printing():
     print("  I(+z):", get_I_at(0.0, 0.0))
 
 ################################################################################
+############## TESTING 
 ################################################################################
-################################################################################
+
 
 if __name__ == "__main__": 
 
@@ -164,7 +166,7 @@ if __name__ == "__main__":
     # Array factor weights: Gaussian beam envelope
     w0 = 10.0 # waist
     k_in= 1   # wavevector magnitude
-    k_in_dir = np.array([0.0,3.0, 1.0]) # wavevector direction
+    k_in_dir = np.array([0.0,0.0, 1.0]) # wavevector direction
     
     alpha = 1.0  # radius scaling for 3D plot
     
@@ -182,8 +184,8 @@ if __name__ == "__main__":
     
     # Construction of vectors arrays
     ## Position vectors
-    r_xyz = random_position(N, plane_restricted= False)
-    #r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane= False)
+    #r_xyz = random_position(N, plane_restricted= False)
+    r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane_restricted= False)
     
     ## Velocity vectors
     v_xyz = None #  random_velocity_thermal(r_xyz)
@@ -194,21 +196,28 @@ if __name__ == "__main__":
     # angle grid
     theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
     
+    # Falten directions array
+    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
+
+    # dipole
+    dipole= single_dipole_E(nx,ny,nz, p_hat) 
+
+
     # Compute
     # ----------------------------
-    AF = array_factor_general(nx, ny, nz, k_out, r_xyz, w=w, chunk_atoms=20000)
-    I = intensity_from_field(AF, nx, ny, nz, p_hat)
+    AF = array_factor_general(n_hat_flat, nz, k_out, r_xyz, w=w, chunk_atoms=20000)
+    I = intensity_from_field(AF, dipole)
     I /= (I.max() + 1e-15)
-    
-    sanity_printing()
+#    
+#    sanity_printing()
     
     # Plot
     # ----------------------------
     plot_atoms(r_xyz,w=w,p_hat = p_hat, k_in_hat =k_in_hat, v_xyz = v_xyz )
     title = f"Radiation pattern: {Nx}x{Ny}, d={dx/lam:.2f}λ, w0={w0}"
     plot_pattern_3d(nx, ny, nz, I, title=title, alpha=1.0, stride=2)
-    
-    # Optional: a theta cut at phi=0
-    plot_planar_cuts(theta, phi, I, title_prefix="Theta cut (phi=0)")
-    
+#    
+#    # Optional: a theta cut at phi=0
+#    plot_planar_cuts(theta, phi, I, title_prefix="Theta cut (phi=0)")
+#    
     plt.show()

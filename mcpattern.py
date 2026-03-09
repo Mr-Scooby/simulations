@@ -108,6 +108,7 @@ def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_o
                                         ) -> np.ndarray:
     """
     Compute the intensity time series for one realization of moving atoms.
+    basically a single run simulation. deterministic physics. 
 
     Parameters
     ----------
