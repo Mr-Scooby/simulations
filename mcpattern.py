@@ -164,7 +164,7 @@ def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_o
         # evolve positions.
         rt_xyz = positions_at_time(r0_xyz, v_xyz, t)
         # evolve weights
-        wt = weight_evolution(rt_xyz,t)
+        wt = w_fn(rt_xyz,t)
 
         # compute array factor
         AF_t = array_factor_general(
