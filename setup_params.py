@@ -48,10 +48,8 @@ class PhysicalParams:
     p_hat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
 
     # Cloud geometry
-    L_parallel: float = field(init=False)
-    L_perp: float = field(init=False)
-    volume: float = field(init=False)
     # Simulation box size
+    L: float = field( init = False) 
     box_size: np.ndarray = field(init=False)
 
     # Microscopic scale
@@ -92,23 +90,21 @@ class PhysicalParams:
         self.p_hat /= np.linalg.norm(self.p_hat)
         
         # Characteristic cloud size
-        self.L_parallel = r.optical_size * self.wavelength
-        self.L_perp = self.L_parallel   # cube 
-        self.volume = self.L_perp**2 * self.L_parallel
+        self.L = r.optical_size * self.wavelength 
         # Simulation box size
-        self.box_size = np.array([self.L_perp, self.L_perp, self.L_parallel], dtype=float)
+        self.box_size = np.array([self.L, self.L, self.L], dtype=float)
 
         # Microscopic spacing and density
         self.spacing = r.optical_spacing * self.wavelength
         self.density = 1.0 / self.spacing**3
 
         # Illumination / pulse scales
-        self.beam_waist = r.illumination_ratio * self.L_perp
-        self.sigma_long = r.filling_factor * self.L_parallel
+        self.beam_waist = r.illumination_ratio * self.L
+        self.sigma_long = r.filling_factor * self.L
 
         # Choose thermal speed so that k v_th t_char = mot_dephase,
         # with t_char taken from pulse transit through the cloud => the time to cross the clod length. 
-        self.t_char = r.pulse_transit * self.L_parallel / self.v_front
+        self.t_char = r.pulse_transit * self.L self.v_front
 
         # Motional dephasing accumulated over t_char
         self.mot_dephase = self.k0 * self.v_thermal * self.t_char
@@ -124,7 +120,9 @@ class SimParams:
 
     # Time sampling
     t_max_factor: float = 1.5
+    t_char : float = 1
     n_times: int = 100
+    t_max: float = field(init = False) 
 
     # Angular grid
     n_theta: int = 91
@@ -135,6 +133,11 @@ class SimParams:
     normalize_each_time: bool = False
     plane_restricted: bool = False
     seed: int = None
+    def __post_init__(self):
+        self.t_max = self.t_max_factor * self.t_char
+    @property
+    def times(self) -> np.ndarray:
+        return np.linspace(0.0, self.t_max, self.n_times)
 
 
 
