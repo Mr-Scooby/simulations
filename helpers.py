@@ -5,6 +5,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
+import inspect
+
+def filter_kwargs(func, kwargs):
+    sig = inspect.signature(func)
+    return {k: v for k, v in kwargs.items() if k in sig.parameters}
 
 def get_logger(name="helpers", level=logging.INFO):
     logger = logging.getLogger(name)
@@ -73,7 +78,7 @@ def intensity_from_field(AF, dipole):
 
 
 # Atom layouts + weights
-def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=True):
+def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=False):
     """
     Centered grid positions as an (N,3) array.
 
@@ -97,7 +102,7 @@ def atom_grid(Nx, Ny, Nz=1, dx=1.0, dy=1.0, dz=1.0, z0=0.0, plane_restricted=Tru
     return r_xyz
 
 
-def random_position(N, box_size=(1.0, 1.0, 1.0), center=(0.0, 0.0, 0.0), seed=0, plane_restricted=True):
+def random_position(N, box_size=(1.0, 1.0, 1.0), center=(0.0, 0.0, 0.0), seed=0, plane_restricted=False):
     """
     Generate random positions uniformly inside a rectangular box.
 
@@ -130,7 +135,7 @@ def random_position(N, box_size=(1.0, 1.0, 1.0), center=(0.0, 0.0, 0.0), seed=0,
     log.info("Construction vector position: RANDOM. N =%d, box_size = %s, plane_restricted = %s.", N, box_size, plane_restricted)
     return r_xyz
 
-def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=True):
+def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=False):
     """
     Generate random velocities for N particles with a thermal (Maxwell-Boltzmann) model:
     each velocity component is drawn from a normal distribution.
@@ -179,3 +184,6 @@ def gaussian_weights(r_xyz, w0, k_in_hat, k_in=1.0):
 
     return (env * phase).astype(np.complex128)
 
+
+def save_simulation_npz(path, **data):
+    np.savez(path, **data)

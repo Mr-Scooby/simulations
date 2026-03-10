@@ -48,6 +48,56 @@ def plot_pattern_3d(nx, ny, nz, I, title="", alpha=1.0, stride=2, cmap="viridis"
     log.info("Plotting pattern 3D. Title = %s", title)
     return fig, ax
 
+def animate_pattern_3d(nx, ny, nz, I_series, title="", alpha=1.0, stride=2, cmap="viridis", interval=50):
+    """Animate a 3D pattern surface from I_series with shape (T, nt, np_)."""
+    nx = np.asarray(nx, dtype=float)
+    ny = np.asarray(ny, dtype=float)
+    nz = np.asarray(nz, dtype=float)
+    I_series = np.asarray(I_series, dtype=float)
+
+    if I_series.ndim != 3:
+        raise ValueError("I_series must have shape (T, nt, np_)")
+
+    fig = plt.figure(figsize=(9, 7))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_box_aspect([1, 1, 1])
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+
+    rmax = np.nanmax(I_series**alpha)
+    ax.set_xlim(-rmax, rmax)
+    ax.set_ylim(-rmax, rmax)
+    ax.set_zlim(-rmax, rmax)
+
+    cmap_obj = plt.get_cmap(cmap)
+    I0 = I_series[0]
+    R0 = I0**alpha
+    surf = [ax.plot_surface(
+        R0 * nx, R0 * ny, R0 * nz,
+        rstride=stride, cstride=stride,
+        facecolors=cmap_obj(I0),
+        linewidth=0, antialiased=True, shade=False
+    )]
+    ax.set_title(f"{title} | frame 0")
+
+    def update(frame):
+        I = I_series[frame]
+        R = I**alpha
+        surf[0].remove()
+        surf[0] = ax.plot_surface(
+            R * nx, R * ny, R * nz,
+            rstride=stride, cstride=stride,
+            facecolors=cmap_obj(I),
+            linewidth=0, antialiased=True, shade=False
+        )
+        ax.set_title(f"{title} | frame {frame}")
+        return surf[0],
+
+    ani = FuncAnimation(fig, update, frames=I_series.shape[0], interval=interval, blit=False)
+    return fig, ax, ani
+
+
 def _wrap_to_pi(angle_rad: np.ndarray) -> np.ndarray:
     """Map angles to (-pi, pi]."""
     return (angle_rad + np.pi) % (2 * np.pi) - np.pi
