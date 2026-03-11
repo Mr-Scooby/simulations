@@ -32,22 +32,7 @@ from rplotting import (
 
 # ---------------------------------------------------------------------
 # Logging
-def get_logger(name="mcpattern", level=logging.INFO):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.propagate = False 
-
-    if logger.handlers:
-        return logger
-
-    h = logging.StreamHandler()
-    fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%H:%M:%S")
-    h.setFormatter(fmt)
-    logger.addHandler(h)
-    return logger
-
-
-log = get_logger()
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------
 # Core physics
@@ -57,7 +42,7 @@ def positions_at_time(r0_xyz: np.ndarray, v_xyz: np.ndarray, t: float) -> np.nda
     r0_xyz = np.asarray(r0_xyz, dtype=float)
     v_xyz = np.asarray(v_xyz, dtype=float)
 
-    log.info("Update position. time: %f", t)
+    log.debug("Update position. time: %f", t)
     return r0_xyz + v_xyz * float(t)
 
 def sample_realization(n_atoms, rng, **kwargs):
@@ -75,8 +60,61 @@ def sample_realization(n_atoms, rng, **kwargs):
 
     return r0_xyz, v_xyz
 
+def compute_realization_af_series_ballistic(
+    n_hat_flat: np.ndarray,
+    grid_shape,
+    k_out: float,
+    times: np.ndarray,
+    r0_xyz: np.ndarray,
+    v_xyz: np.ndarray,
+    w_fn,
+    chunk_atoms: int = 20000,
+) -> np.ndarray:
+    """
+    Compute AF(t, theta, phi) for one realization using ballistic motion:
+        r_j(t) = r0_j + v_j t
 
-def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_out: float,
+    We precompute, per chunk:
+        phi_r0 = k_out * (n_hat · r0)
+        phi_v  = k_out * (n_hat · v)
+
+    Then at each time:
+        phase(t) = phi_r0 + t * phi_v
+
+    Notes
+    -----
+    - w_fn must be atom-local, since it is called chunk by chunk.
+    - Returns complex AF series with shape (T, nt, np_).
+    """
+    times = np.asarray(times, dtype=float)
+    nt, np_ = grid_shape
+    T = times.size
+    n_atoms = r0_xyz.shape[0]
+    
+    log.info("computing AF ... ") 
+    AF_series = np.zeros((T, nt * np_), dtype=np.complex128)
+
+    for a0 in range(0, n_atoms, chunk_atoms):
+        a1 = min(a0 + chunk_atoms, n_atoms)
+
+        r0_chunk = np.asarray(r0_xyz[a0:a1], dtype=float)   # (C, 3)
+        v_chunk  = np.asarray(v_xyz[a0:a1], dtype=float)    # (C, 3)
+
+        # Precompute ballistic phase ingredients for this chunk
+        phi_r0 = k_out * (n_hat_flat @ r0_chunk.T)          # (M, C)
+        phi_v  = k_out * (n_hat_flat @ v_chunk.T)           # (M, C)
+
+        for it, t in enumerate(times):
+            rt_chunk = r0_chunk + t * v_chunk              # (C, 3)
+            wt_chunk = np.asarray(w_fn(rt_chunk, t), dtype=np.complex128)  # (C,)
+
+            AF_series[it] += np.exp(1j * (phi_r0 + t * phi_v)) @ wt_chunk
+
+    
+    return AF_series.reshape(T, nt, np_)
+
+
+def compute_realization_intensity_series(n_hat_flat, grid_shape, dipole:np.ndarray,  k_out: float,
                                         p_hat: np.ndarray, times: np.ndarray,
                                          n_atoms:int,rng:np.random, w_fn,
                                          chunk_atoms: int = 20000,
@@ -90,7 +128,7 @@ def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_o
     ----------
     n_hat_flat : np.ndarray
         stack array of the irection cosine grids for the observation directions.
-    nx: array 
+    grid_shape: (nt, np_) 
         for shape later 
     k_out : float
         Output wave number.
@@ -119,7 +157,7 @@ def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_o
     # time array
     times = np.asarray(times, dtype=float)
     T = times.size
-    nt, np_ = nx.shape
+    nt, np_ = grid_shape
 
     # Sample radom atoms and velocity
     r0_xyz, v_xyz = sample_realization(n_atoms,rng, **kwargs)
@@ -132,36 +170,30 @@ def compute_realization_intensity_series(n_hat_flat, nx, dipole:np.ndarray,  k_o
         len(r0_xyz), T, nt, np_, chunk_atoms, normalize_each_time
     )
 
-    # Time evolution simulation. 
-    for it, t in enumerate(times):
-        
-        # evolve positions.
-        rt_xyz = positions_at_time(r0_xyz, v_xyz, t)
-        # evolve weights
-        wt = w_fn(rt_xyz,t)
+    AF_series = compute_realization_af_series_ballistic(
+        n_hat_flat=n_hat_flat,
+        grid_shape = grid_shape,
+        k_out=k_out,
+        times=times,
+        r0_xyz=r0_xyz,
+        v_xyz=v_xyz,
+        w_fn=w_fn,
+        chunk_atoms=chunk_atoms,
+    )
 
-        # compute array factor
-        AF_t = array_factor_general(
-            n_hat_flat, nx, k_out,
-            rt_xyz,
-            w = wt,
-            chunk_atoms=chunk_atoms,
+    log.info("Computing intensities...") 
+    for it in range(T):
+        I_series[it] = intensity_from_field(
+            AF_series[it],
+            dipole=dipole,
         )
 
-        # compute intensity.
-        I_t = intensity_from_field(AF_t,dipole)
-        I_t = np.asarray(I_t, dtype=float)
-
-        if normalize_each_time:
-            I_t = I_t / (I_t.max() + 1e-15)
-
-        I_series[it] = I_t
 
     return I_series
 
 
 
-def mc_sim( nx, ny, nz,
+def mc_sim( nx,ny,nz, grid_shape,
     k_out: float, p_hat: np.ndarray,
     times: np.ndarray,
     n_mc: int,
@@ -209,7 +241,7 @@ def mc_sim( nx, ny, nz,
 
     times = np.asarray(times, dtype=float)
     T = times.size
-    nt, np_ = nx.shape
+    nt, np_ = grid_shape 
 
     log.info(
         "mc_sim: n_mc=%d, n_atoms=%d, T=%d, grid=(%d,%d), "
@@ -230,6 +262,7 @@ def mc_sim( nx, ny, nz,
     t_start = time.time()
 
     # Runs of the simulation
+    log.info("Starting mc runs ... 1 /%d", n_mc)
     for mc in range(n_mc):
         # each simulation time keeper
         t_mc = time.time()
@@ -239,7 +272,7 @@ def mc_sim( nx, ny, nz,
 
         # Simulation
         I_mc = compute_realization_intensity_series(n_hat_flat= n_hat_flat,
-                nx = nx,
+                grid_shape = grid_shape, 
                 dipole= dipole, 
                 k_out=k_out,
                 p_hat=p_hat,

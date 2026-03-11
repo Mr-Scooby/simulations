@@ -7,28 +7,7 @@ import matplotlib.pyplot as plt
 import logging
 import inspect
 
-def filter_kwargs(func, kwargs):
-    sig = inspect.signature(func)
-    return {k: v for k, v in kwargs.items() if k in sig.parameters}
-
-def get_logger(name="helpers", level=logging.INFO):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    # Prevent messages from being passed to the root logger
-    logger.propagate = False
-
-    # Add handler only once (avoid duplicate lines in notebooks / reruns)
-    if not logger.handlers:
-        h = logging.StreamHandler()
-        fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s",
-                                datefmt="%H:%M:%S")
-        h.setFormatter(fmt)
-        logger.addHandler(h)
-
-    return logger
-
-log = get_logger()
+log = logging.getLogger(__name__)
 
 # Angle grids / directions
 def make_angle_grid(n_theta=241, n_phi=481):
@@ -73,7 +52,7 @@ def intensity_from_field(AF, dipole):
     """
     I = |E|^2 where E = AF * E_single_dipole
     """
-    log.info("Computing intensity from field: E shape=%s.", AF.shape)
+    log.debug("Computing intensity from field: E shape=%s.", AF.shape)
     return np.abs(AF)**2 * dipole 
 
 
@@ -184,6 +163,10 @@ def gaussian_weights(r_xyz, w0, k_in_hat, k_in=1.0):
 
     return (env * phase).astype(np.complex128)
 
+def filter_kwargs(func, kwargs):
+    sig = inspect.signature(func)
+    return {k: v for k, v in kwargs.items() if k in sig.parameters}
 
 def save_simulation_npz(path, **data):
     np.savez(path, **data)
+    log.info("Saving simulation run. FileName = %s", path) 

@@ -22,40 +22,21 @@ from rplotting import (
 
 import logging
 
-def get_logger(name="rpattern", level=logging.INFO):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    # Prevent messages from being passed to the root logger
-    logger.propagate = False
-
-    # Add handler only once (avoid duplicate lines in notebooks / reruns)
-    if not logger.handlers:
-        h = logging.StreamHandler()
-        fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s",
-                                datefmt="%H:%M:%S")
-        h.setFormatter(fmt)
-        logger.addHandler(h)
-
-    return logger
-
-log = get_logger()
-
-log.info("rpattern.py loaded")
+log = logging.getLogger(__name__)
 
 #################################################################################
 # Array factor
 # Flatten directions: n_hat_flat (M,3), M=nt*np
 #n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
 
-def array_factor_general(n_hat_flat,nx , k_out, r_xyz, w=None, chunk_atoms=20000):
+def array_factor_general(n_hat_flat, grid_shape, k_out, r_xyz, w=None, chunk_atoms=20000):
     """
     General array factor:
         AF(n_hat) = sum_j w_j * exp(i k_out n_hat · r_j)
 
     Inputs:
       n_hat:_flat: (M,3) array: shpuld be np.stack[nx,ny,nz]: (nt,np) direction cosines on the sphere  #n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
-      nx: (nt, np_) direction cosine. LAter for reshape. 
+      grid_shape: (nt, np_) direction cosine. LAter for reshape. 
       k_out        : scalar wave number
       r_xyz    : (N,3) atom positions
       w        : (N,) complex weights (amplitude*exp(i phase)). If None -> all ones.
@@ -65,16 +46,13 @@ def array_factor_general(n_hat_flat,nx , k_out, r_xyz, w=None, chunk_atoms=20000
       AF : (nt,np) complex array factor
     """
     nt, np_ = nx.shape
+    # atom number
     N = r_xyz.shape[0]
-
+    # grid size flat
     M = n_hat_flat.shape[0]
     
     # Assign memory 
     AF_flat = np.zeros(M, dtype=np.complex128)
-
-    M = nx.size      # n_theta * n_phi
-    N = r_xyz.shape[0]
-    log.info("AF: M directions = %d, N atoms = %d, M*N = %d", M, N, M*N)
 
     if w is None:
         w = np.ones(N, dtype=np.complex128)
@@ -99,7 +77,7 @@ def array_factor_general(n_hat_flat,nx , k_out, r_xyz, w=None, chunk_atoms=20000
         AF_flat += np.exp(1j * dots) @ ww
 
     log.info("AF: ended")
-    return AF_flat.reshape(nt, np_)
+    return AF_flat.reshape(*grid_shape)
 
 
 # Array factor (separable lattice)

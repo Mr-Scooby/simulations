@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import beam
 import setup_params as stp 
+from dataclasses import asdict 
 
 # ---------------------------------------------------------------------
 # Logging
@@ -28,8 +29,15 @@ def get_logger(name="run_sim", level=logging.INFO):
     logger.addHandler(h)
     return logger
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
-log = get_logger()
+#log = get_logger()
+
 
 
 def atom_weights_sim(n_atoms, rng, w_fn, T , **kwargs): 
@@ -71,12 +79,12 @@ def main():
     
     sim = stp.SimParams(
         n_atoms=500,
-        n_mc= 1,
+        n_mc= 5,
         t_max_factor = 2,
         t_char= phys.t_char,
         n_times=100,
-        n_theta=241,#91
-        n_phi=481,#181
+        n_theta=91,#241,#91
+        n_phi=181,#481,#181
         seed=1 ,
     )
 
@@ -105,6 +113,7 @@ def main():
 
     I = mcpattern.mc_sim(
             nx = nx, ny = ny, nz = nz,
+            grid_shape = sim.grid_shape,
             k_out = phys.k0, p_hat = phys.p_hat ,
             times = sim.times, 
             n_mc = sim.n_mc,
