@@ -103,7 +103,7 @@ def make_weight_fn_gaussian_pulse(
     )
 
     # Optional shift of the pulse center at t=0
-    r_front0 = r_front0 + float(pulse_center_t0) * k_in_hat
+    r_front0 = r_front0 + (1.2 * sigma_long + float(pulse_center_t0) ) * k_in_hat
 
     def w_fn(r_xyz, t, return_pulse_center = False):
         """

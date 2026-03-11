@@ -104,7 +104,7 @@ class PhysicalParams:
 
         # Choose thermal speed so that k v_th t_char = mot_dephase,
         # with t_char taken from pulse transit through the cloud => the time to cross the clod length. 
-        self.t_char = r.pulse_transit * self.L self.v_front
+        self.t_char = r.pulse_transit * self.L /self.v_front
 
         # Motional dephasing accumulated over t_char
         self.mot_dephase = self.k0 * self.v_thermal * self.t_char
@@ -127,6 +127,7 @@ class SimParams:
     # Angular grid
     n_theta: int = 91
     n_phi: int = 181
+    grid_shape = field(init = False) 
 
     # Performance / implementation
     chunk_atoms: int = 20000
@@ -135,6 +136,7 @@ class SimParams:
     seed: int = None
     def __post_init__(self):
         self.t_max = self.t_max_factor * self.t_char
+        self.grid_shape = (n_theta, n_phi) 
     @property
     def times(self) -> np.ndarray:
         return np.linspace(0.0, self.t_max, self.n_times)
