@@ -10,7 +10,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt 
 import beam
-
+import setup_params as stp 
 
 # ---------------------------------------------------------------------
 # Logging
@@ -52,77 +52,83 @@ def atom_weights_sim(n_atoms, rng, w_fn, T , **kwargs):
 
 def main():
     """ run simualtion"""
-
-    # Parameters
-    lam = 1.0
-    k_out = 2 * np.pi / lam
-
-    # Dipole orientation
-    p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
-    p_hat /= (np.linalg.norm(p_hat) + 1e-15)
-
-    # MC settings
-    n_atoms = 1000
-    n_mc = 1 # number of runs
-    T = 20
-    times = np.linspace(0.0, 30.0, T)
-
-    # Incident beam parameters for weights
-    w0 = 10.0
-    k_in_hat = np.array([0.0, 0.0, 1.0], dtype=float)
-    k_in = k_out  # keep consistent with how gaussian_weights was designed
-    v_front = 1.0
-    r_t0 = 0
-
-    log.info("""==== Paramaters =====
-             lam=%0.3f,
-             Atom number = %d,
-             Dipole vector = %s,
-             Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
-             =====================""", 
-             lam, n_atoms, p_hat, w0, k_in, k_in_hat)
+    regime = stp.PhysicalRegime(
+        optical_size=100.0,
+        optical_spacing=1.5,
+        illumination_ratio=0.7,
+        filling_factor=0.1,
+        pulse_transit=1.5,
+    )
     
-    # sim box size 
-    sim_box = (10,10,10) 
+    phys = stp.PhysicalParams(
+        regime=regime,
+        wavelength=1.0,
+        v_front=1.0,
+        v_thermal=1e-3,
+        k_in_hat = [0,1,1],
+        p_hat = [1,0,0]
+    )
+    
+    sim = stp.SimParams(
+        n_atoms=500,
+        n_mc= 1,
+        t_max_factor = 2,
+        t_char= phys.t_char,
+        n_times=100,
+        n_theta=241,#91
+        n_phi=481,#181
+        seed=1 ,
+    )
 
-    # Angle grid
-    theta, phi, nx, ny, nz = helpers.make_angle_grid(n_theta=241, n_phi=481)
+   
+   # Angle grid
+    theta, phi, nx, ny, nz = helpers.make_angle_grid(n_theta= sim.n_theta, n_phi=sim.n_phi)
     
     # weights 
-    w_fn = beam.make_weight_fn_gaussian_pulse(5,5,k_in_hat,v_front = v_front, box_size= sim_box, pulse_center_t0= r_t0)
-
+    w_fn = beam.make_weight_fn_gaussian_pulse(phys.beam_waist,
+                                              phys.sigma_long,
+                                              phys.k_in_hat,
+                                              phys.k0,
+                                              v_front = phys.v_front, 
+                                              box_size= phys.box_size, 
+                                              )
     rng =  np.random.default_rng(0)
-    position, weights, pulse_center = atom_weights_sim(n_atoms,rng, w_fn,T, k_in_hat= k_in_hat, box_size= sim_box,v_front = v_front)
+    position, weights, pulse_center = atom_weights_sim(sim.n_atoms,
+                                                       rng,
+                                                       w_fn,
+                                                       sim.n_times,
+                                                       k_in_hat= phys.k_in_hat, 
+                                                       box_size= phys.box_size,
+                                                       v_front = phys.v_front)
 
 
     I = mcpattern.mc_sim(
             nx = nx, ny = ny, nz = nz,
-            k_out = k_out, p_hat = p_hat,
-            times = times, 
-            n_mc = n_mc,
-            n_atoms = n_atoms, 
+            k_out = phys.k0, p_hat = phys.p_hat ,
+            times = sim.times, 
+            n_mc = sim.n_mc,
+            n_atoms = sim.n_atoms, 
             plane_restricted = False, 
             w_fn = w_fn,
-            box_size = sim_box
+            box_size = phys.box_size
             ) 
-    helpers.save_simulation_npz("./sim_test7", intensity = I, atom_pos = position, w = weights, pcenter = pulse_center, times = times) 
+
+    helpers.save_simulation_npz("./sim_test_paramssetup2", intensity = I, atom_pos = position, w = weights, pcenter = pulse_center, times = sim.times) 
 
     I_plot0 = I[0] / (np.max(I[0]) + 1e-15)
-
-    # Plots. 
-    #fig,ax, ani = rplotting.animate_pattern_3d(nx,ny,nz, I, "MC animation pattern")
-    #plt.show()
+#
+#    # Plots. 
+   
+#    #plt.show()
     log.info("plotting") 
-
-    #rplotting.plot_pattern_3d(nx, ny, nz, I_plot0, title=f"MC mean pattern, t={times[0]:.3g}", alpha=1.0, stride=2)
-
+#
+#    #rplotting.plot_pattern_3d(nx, ny, nz, I_plot0, title=f"MC mean pattern, t={times[0]:.3g}", alpha=1.0, stride=2)
+#
 
 if __name__ == "__main__":
 
     log.info("Starting run_sim. TIME DEPENDENC MC SIMULATION")
     main()
-    plt.show()
-    
     
 
 
