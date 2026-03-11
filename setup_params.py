@@ -4,6 +4,10 @@
 from dataclasses import dataclass, field
 import numpy as np
 import logging
+import hashlib
+import hashlib
+import json
+
 
 log = logging.getLogger(__name__) 
 
@@ -134,14 +138,74 @@ class SimParams:
     normalize_each_time: bool = False
     plane_restricted: bool = False
     seed: int = None
+
+    # File naming 
+    # Computed run name: human-readable + hash from all params
+
     def __post_init__(self):
         self.t_max = self.t_max_factor * self.t_char
-        self.grid_shape = (n_theta, n_phi) 
+
     @property
     def times(self) -> np.ndarray:
         return np.linspace(0.0, self.t_max, self.n_times)
 
+    def _make_run_name(self) -> str:
+        # Turn params into a dict for hashing
+        d = asdict(self)
 
+        # run_name is being built right now, so remove it from the hash input
+        d.pop("run_name", None)
+
+        # Short hash: changes if any parameter changes
+        h = hashlib.sha1(
+            json.dumps(d, sort_keys=True, default=str).encode()
+        ).hexdigest()[:8]
+
+        # Compact tag for the input direction, e.g. [0,0,1] -> k001
+        # Assumes k is integer-like when you use it in the name
+        # If k is stored elsewhere, pass it in later instead
+        k_tag = "k001"
+
+        # Human-readable stem + hash
+        return f"N{self.n_atoms}_mc{self.n_mc}_nt{self.n_times}_{k_tag}_{h}"
+    file_name: str = field(init = False)
+    def __post_init__(self):
+        self.t_max = self.t_max_factor * self.t_char
+        self.grid_shape = (n_theta, n_phi) 
+
+
+
+def _k_tag(k_hat) -> str:
+    return "k" + "".join(str(int(x)) for x in k_hat)
+
+@dataclass
+class SetupParams:
+    """ Stores metadata and creates run naming """
+    regime: PhysicalRegime
+    phys: PhysicalParams
+    sim: SimParams
+
+    # Computed run name: human-readable + hash from all params
+    run_name: str = field(init=False)
+
+    def __post_init__(self):
+        # hash the full setup, except the name itself
+        d = asdict(self)
+        # dont use item being constructed
+        d.pop("run_name", None)
+    
+        # create hash to avoid collision naming when small param changed
+        h = hashlib.sha1(
+            json.dumps(d, sort_keys=True, default=str).encode()
+        ).hexdigest()[:8]
+
+        self.run_name = (
+            f"N{self.sim.n_atoms}"
+            f"_mc{self.sim.n_mc}"
+            f"_nt{self.sim.n_times}"
+            f"_{_k_tag(self.phys.k_in_hat)}"
+            f"_{h}"
+        )
 
 
 def log_main_params(log, main) -> None:
