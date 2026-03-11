@@ -80,6 +80,7 @@ def main():
         seed=1 ,
     )
 
+    setup = stp.SetupParams(regime, phys, sim) 
    
    # Angle grid
     theta, phi, nx, ny, nz = helpers.make_angle_grid(n_theta= sim.n_theta, n_phi=sim.n_phi)
@@ -113,12 +114,10 @@ def main():
             box_size = phys.box_size
             ) 
 
-    helpers.save_simulation_npz("./sim_test_paramssetup2", intensity = I, atom_pos = position, w = weights, pcenter = pulse_center, times = sim.times) 
+    # Saving
+    helpers.save_simulation_npz(setup.run_name,
+    metadata=asdict(setup), intensity = I, atom_pos = position, w = weights, pcenter = pulse_center,times=setup.sim.times) 
 
-    I_plot0 = I[0] / (np.max(I[0]) + 1e-15)
-#
-#    # Plots. 
-   
 #    #plt.show()
     log.info("plotting") 
 #
