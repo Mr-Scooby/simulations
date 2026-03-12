@@ -111,7 +111,7 @@ def random_position(N, box_size=(1.0, 1.0, 1.0), center=(0.0, 0.0, 0.0), seed=0,
 
     r_xyz = np.column_stack([x, y, z])
 
-    log.info("Construction vector position: RANDOM. N =%d, box_size = %s, plane_restricted = %s.", N, box_size, plane_restricted)
+    log.info("Construction vector position: RANDOM. n_atoms =%d, box_size = %s, center=%s, plane_restricted = %s, seed=%s.", N, box_size,center, plane_restricted, seed)
     return r_xyz
 
 def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=False):
@@ -136,7 +136,7 @@ def random_velocity_thermal(r_xyz, v_std=0.01, seed=0, plane_restricted=False):
 
     if plane_restricted:
         v_xyz[:, 2] = 0.0
-    log.info("Cosntruction velocity vectors: Thermal distribution. v_std = %0.3f", v_std)
+    log.info("Cosntruction velocity vectors: Thermal distribution. v_std = %0.3f, seed =%s, plane_restricted =%s ", v_std, seed, plane_restricted)
     return v_xyz
 
 
@@ -170,3 +170,26 @@ def filter_kwargs(func, kwargs):
 def save_simulation_npz(path, **data):
     np.savez(path, **data)
     log.info("Saving simulation run. FileName = %s", path) 
+
+def atom_weights_sim(times, r_xyz, v_xyz, w_fn): 
+    """ produce a small simulation of the atoms and the weights movement to check"""
+   
+    times = np.asarray(times, dtype=float)
+    T = times.size
+    atoms, dim = r_xyz.shape 
+    positions = np.zeros((T,atoms,dim ))
+     
+    # positions[t, i, a] = r_xyz[i, a] + times[t] * v_xyz[i, a]
+    positions = r_xyz[None, :, :] + times[:, None, None] * v_xyz[None, :, :]
+
+    weights = np.zeros((T, atoms))
+    pulse_center = np.zeros((T, 3))
+
+    for it, t in enumerate(times):
+        weights[it], pulse_center[it] = w_fn(
+            positions[it], t, return_pulse_center=True
+        )
+
+    return positions, weights, pulse_center
+
+

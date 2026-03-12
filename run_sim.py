@@ -29,6 +29,7 @@ def get_logger(name="run_sim", level=logging.INFO):
     logger.addHandler(h)
     return logger
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
@@ -40,22 +41,6 @@ log = logging.getLogger(__name__)
 
 
 
-def atom_weights_sim(n_atoms, rng, w_fn, T , **kwargs): 
-    """ produce a small simulation of the atoms and the weights movement to check"""
-   
-    r_xyz, v_xyz = mcpattern.sample_realization(n_atoms,rng,**kwargs)
-
-    atoms, dim = r_xyz.shape 
-    positions = np.zeros((T,atoms,dim ))
-    weights = np.zeros((T,atoms))
-    pulse_center = np.zeros((T,3))
-    for t in range(0,T): 
-        r_upd = mcpattern.positions_at_time(r_xyz, v_xyz, t ) 
-        positions[t] = r_upd
-        weights[t], pulse_center[t] = w_fn(r_upd, t,return_pulse_center =True )
-
-    return positions, weights, pulse_center
-
 
 
 def main():
@@ -64,22 +49,24 @@ def main():
         optical_size=100.0,
         optical_spacing=1.5,
         illumination_ratio=0.7,
-        filling_factor=0.1,
-        pulse_transit=1.5,
+        filling_factor=0.4,
+        pulse_transit=1.1,
     )
     
     phys = stp.PhysicalParams(
         regime=regime,
-        wavelength=1.0,
+        wavelength=1,
         v_front=1.0,
-        v_thermal=1e-3,
+        v_thermal=0.01,
         k_in_hat = [0,1,1],
-        p_hat = [1,0,0]
+        p_hat = [1,0,0],
+        beam_r0 = 20,
+       pcenter_atOrigin = False
     )
     
     sim = stp.SimParams(
-        n_atoms=500,
-        n_mc= 5,
+        n_atoms=1000,
+        n_mc= 1,
         t_max_factor = 2,
         t_char= phys.t_char,
         n_times=100,
@@ -100,31 +87,40 @@ def main():
                                               phys.k0,
                                               v_front = phys.v_front, 
                                               box_size= phys.box_size, 
-                                              )
+                                              pulse_center_t0= phys.beam_r0,
+                                              pcenter_at_origin = phys.pcenter_atOrigin,
+                                              margin = 0
+                                                  )
     rng =  np.random.default_rng(0)
-    position, weights, pulse_center = atom_weights_sim(sim.n_atoms,
-                                                       rng,
-                                                       w_fn,
-                                                       sim.n_times,
-                                                       k_in_hat= phys.k_in_hat, 
-                                                       box_size= phys.box_size,
-                                                       v_front = phys.v_front)
+#    r_xyz, v_xyz = mcpattern.sample_realization(sim.n_atoms, rng, v_std= phys.v_thermal) 
+#    position, weights, pulse_center = helpers.atom_weights_sim(sim.times,
+#                                                      r_xyz,
+#                                                      v_xyz,
+#                                                      w_fn)
+#
+    I, position, weights, pulse_center = mcpattern.mc_sim(
+        nx=nx, ny=ny, nz=nz,
+        grid_shape=sim.grid_shape,
+        k_out=phys.k0,
+        p_hat=phys.p_hat,
+        times=sim.times,
+        n_mc=sim.n_mc,
+        n_atoms=sim.n_atoms,
+        w_fn=w_fn,
+        chunk_atoms=sim.chunk_atoms,
+        seed=sim.seed,
+        normalize_each_time=sim.normalize_each_time,
+        plane_restricted = sim.plane_restricted,
+        box_size=phys.box_size,
+        v_std=phys.v_thermal,
+        center= [0,0,0],
+        pcenter_at_origin= phys.pcenter_atOrigin
+    )
 
-
-    I = mcpattern.mc_sim(
-            nx = nx, ny = ny, nz = nz,
-            grid_shape = sim.grid_shape,
-            k_out = phys.k0, p_hat = phys.p_hat ,
-            times = sim.times, 
-            n_mc = sim.n_mc,
-            n_atoms = sim.n_atoms, 
-            plane_restricted = False, 
-            w_fn = w_fn,
-            box_size = phys.box_size
-            ) 
-
+    log.info("sim times window t_min = %s, t_max = %s", min(sim.times), max(sim.times))
     # Saving
-    helpers.save_simulation_npz(setup.run_name,
+    #helpers.save_simulation_npz("test_0001", atom_pos = position, w = weights, pcenter = pulse_center,times=setup.sim.times) 
+    helpers.save_simulation_npz("sims_runs/"+setup.run_name,
     metadata=asdict(setup), intensity = I, atom_pos = position, w = weights, pcenter = pulse_center,times=setup.sim.times) 
 
 #    #plt.show()

@@ -16,7 +16,8 @@ from helpers import (
     random_position,
     random_velocity_thermal,
     single_dipole_E,
-    filter_kwargs
+    filter_kwargs,
+    atom_weights_sim
 )
 
 from rpattern import (
@@ -47,16 +48,15 @@ def positions_at_time(r0_xyz: np.ndarray, v_xyz: np.ndarray, t: float) -> np.nda
 
 def sample_realization(n_atoms, rng, **kwargs):
     """Sample random initial positions and velocities for one MC realization."""
-    # filter kwargs
-    pos_kwargs = filter_kwargs(random_position, kwargs)
-    vel_kwargs = filter_kwargs(random_velocity_thermal, kwargs)
-
     # Sample one realization of initial positions and velocities.
     log.info("Generating random sample.")
-    r0_xyz = np.asarray(random_position(n_atoms, seed=int(rng.integers(0, 2**32)),**pos_kwargs) , dtype=float)
+    r0_xyz = np.asarray(random_position(n_atoms, seed=int(rng.integers(0, 2**32)),
+                                        box_size = kwargs.get("box_size"), center = kwargs.get("center"),
+                                        plane_restricted = kwargs.get("plane_restricted")
+                                        ) , dtype=float)
     v_xyz = np.asarray(
         random_velocity_thermal(r0_xyz,seed=int(rng.integers(2**32)),
-                                **vel_kwargs),dtype=float)
+                                v_std = kwargs.get("v_std"), plane_restricted = kwargs.get("plane_restricted")),dtype=float)
 
     return r0_xyz, v_xyz
 
@@ -69,6 +69,7 @@ def compute_realization_af_series_ballistic(
     v_xyz: np.ndarray,
     w_fn,
     chunk_atoms: int = 20000,
+    **kwargs
 ) -> np.ndarray:
     """
     Compute AF(t, theta, phi) for one realization using ballistic motion:
@@ -106,7 +107,7 @@ def compute_realization_af_series_ballistic(
 
         for it, t in enumerate(times):
             rt_chunk = r0_chunk + t * v_chunk              # (C, 3)
-            wt_chunk = np.asarray(w_fn(rt_chunk, t), dtype=np.complex128)  # (C,)
+            wt_chunk = np.asarray(w_fn(rt_chunk, t, return_pulse_center = kwargs.get('return_pulse_center') ), dtype=np.complex128)  # (C,)
 
             AF_series[it] += np.exp(1j * (phi_r0 + t * phi_v)) @ wt_chunk
 
@@ -118,7 +119,8 @@ def compute_realization_intensity_series(n_hat_flat, grid_shape, dipole:np.ndarr
                                         p_hat: np.ndarray, times: np.ndarray,
                                          n_atoms:int,rng:np.random, w_fn,
                                          chunk_atoms: int = 20000,
-                                        normalize_each_time: bool = False,**kwargs
+                                        normalize_each_time: bool = False,
+                                         **kwargs
                                         ) -> np.ndarray:
     """
     Compute the intensity time series for one realization of moving atoms.
@@ -179,6 +181,7 @@ def compute_realization_intensity_series(n_hat_flat, grid_shape, dipole:np.ndarr
         v_xyz=v_xyz,
         w_fn=w_fn,
         chunk_atoms=chunk_atoms,
+        **kwargs
     )
 
     log.info("Computing intensities...") 
@@ -198,7 +201,8 @@ def mc_sim( nx,ny,nz, grid_shape,
     times: np.ndarray,
     n_mc: int,
     n_atoms: int, 
-    w_fn, chunk_atoms: int = 20000, seed: int = 0,
+    w_fn,
+    chunk_atoms: int = 20000, seed: int = 0,
     normalize_each_time: bool = False,
     **kwargs
 ) -> np.ndarray:
@@ -300,7 +304,11 @@ def mc_sim( nx,ny,nz, grid_shape,
         (time.time() - t_start) / max(float(n_mc), 1.0),
     )
 
-    return I_mean
+    log.info("Simulating atom and beam movement")
+    r_xyz, v_xyz = sample_realization(n_atoms, rng, **kwargs) 
+    pos, weight, pulscenter = atom_weights_sim(times, r_xyz, v_xyz, w_fn)
+
+    return I_mean, pos, weight, pulscenter
 
 # ---------------------------------------------------------------------
 # Example main

@@ -10,7 +10,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def upstream_front_position(center, box_size, k_in_hat, margin=1.0):
+def upstream_front_position(center, box_size, k_in_hat, margin=1.0) -> np.array:
     """
     Place the pulse front just outside the upstream edge of a box-shaped cloud.
 
@@ -49,6 +49,7 @@ def make_weight_fn_gaussian_pulse(
     center=(0.0, 0.0, 0.0),
     margin=0.0,
     pulse_center_t0=0.0,
+    pcenter_at_origin = False
 ):
     """
     Build w_fn(r_xyz, t) for a pulsed Gaussian beam propagating through the cloud.
@@ -95,15 +96,35 @@ def make_weight_fn_gaussian_pulse(
     box_size = np.asarray(box_size, dtype=float)
 
     # position of the center of the pulse. 
-    r_front0 = upstream_front_position(
-        center=center,
-        box_size=box_size,
-        k_in_hat=k_in_hat,
-        margin=margin,
-    )
+    if pcenter_at_origin : 
+        r_front0 = np.array([0,0,0]) 
+    else: 
 
-    # Optional shift of the pulse center at t=0
-    r_front0 = r_front0 + (1.2 * sigma_long + float(pulse_center_t0) ) * k_in_hat
+        r_front0 = upstream_front_position(
+            center=center,
+            box_size=box_size,
+            k_in_hat=k_in_hat,
+            margin=margin,
+        )
+
+        # Optional shift of the pulse center at t=0 it always takes into account the pulse width.
+        r_front0 = r_front0 - (1.2 * sigma_long + float(pulse_center_t0) ) * k_in_hat
+
+    log.info(
+        "Creating Gaussian pulse weight function: "
+        "w0=%.6g, sigma_long=%.6g, v_front=%.6g, "
+        "k_in_hat=%s, box_size=%s, center0=%s, margin=%s, pulse_center_t0=%s, pcenter_at_origin = %s, pulse_r0_front = %s",
+        w0,
+        sigma_long,
+        v_front,
+        np.array2string(np.asarray(k_in_hat), precision=3),
+        np.array2string(np.asarray(box_size), precision=3),
+        np.array2string(np.asarray(center), precision=3),
+        margin, 
+        pulse_center_t0,
+        pcenter_at_origin,
+        r_front0
+        )
 
     def w_fn(r_xyz, t, return_pulse_center = False):
         """
@@ -141,7 +162,7 @@ def make_weight_fn_gaussian_pulse(
         env_long = np.exp(-(u_par**2) / (sigma_long**2))
 
         # Incident optical phase
-        phase =  np.exp(1j * k_in * (r_xyz @ k_in_hat))
+        phase =  np.exp(-1j * k_in * (r_xyz @ k_in_hat))
         if return_pulse_center == True :
             return (env_perp * env_long * phase).astype(np.complex128), r_front_t
         else: 

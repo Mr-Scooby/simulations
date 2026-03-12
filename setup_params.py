@@ -66,6 +66,9 @@ class PhysicalParams:
     sigma_long: float = field(init=False)
     # Incident beam direction
     k_in_hat: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
+    # Position of the beam at t=0 in the direction of k_in. 
+    beam_r0: float = 0
+    pcenter_atOrigin: bool = False
 
 
     # Motion / time 
@@ -108,7 +111,11 @@ class PhysicalParams:
 
         # Choose thermal speed so that k v_th t_char = mot_dephase,
         # with t_char taken from pulse transit through the cloud => the time to cross the clod length. 
-        self.t_char = r.pulse_transit * self.L /self.v_front
+        try: 
+            self.t_char = r.pulse_transit * self.L /self.v_front
+        except: 
+            # in case we want v =0. we set a default t_char of 10. 
+            self.t_char = 10
 
         # Motional dephasing accumulated over t_char
         self.mot_dephase = self.k0 * self.v_thermal * self.t_char
@@ -154,7 +161,7 @@ class SimParams:
 
 
 def _k_tag(k_hat) -> str:
-    return "k" + "".join(str(int(x)) for x in k_hat)
+    return "k" + "".join(str(round(x)) for x in k_hat)
 
 @dataclass
 class SetupParams:
