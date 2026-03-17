@@ -45,7 +45,7 @@ def array_factor_general(n_hat_flat, grid_shape, k_out, r_xyz, w=None, chunk_ato
     Returns:
       AF : (nt,np) complex array factor
     """
-    nt, np_ = nx.shape
+    nt, np_ = grid_shape
     # atom number
     N = r_xyz.shape[0]
     # grid size flat
@@ -113,89 +113,3 @@ def sanity_printing():
     print("  I(+x):", get_I_at(np.pi/2, 0.0))
     print("  I(+y):", get_I_at(np.pi/2, np.pi/2))
     print("  I(+z):", get_I_at(0.0, 0.0))
-
-################################################################################
-############## TESTING 
-################################################################################
-
-
-if __name__ == "__main__": 
-
-
-    log.info("starting rpattern. NO time dependence. Static positon.")
-
-    # Parameters
-    lam = 1.0
-    k_out = 2 * np.pi / lam
-    
-    # dipole orientation
-    p_hat = np.array([1.0, 0.0, 0.0], dtype=float)
-    
-    # atoms: 2D lattice / Number of atoms.
-    Nx = 10  
-    Ny = 10
-    Nz = 10
-    
-    N = Nx*Ny*Nz
-    
-    ## Atomic Interdistance
-    dx = dy = dz= 0.5 * lam
-    
-    # Array factor weights: Gaussian beam envelope
-    w0 = 10.0 # waist
-    k_in= 1   # wavevector magnitude
-    k_in_dir = np.array([0.0,0.0, 1.0]) # wavevector direction
-    
-    alpha = 1.0  # radius scaling for 3D plot
-    
-    log.info("""==== Paramaters =====
-             lam=%0.3f,
-             Atom number = %d,
-             Dipole vector = %s,
-             Beam: w0 = %0.3f, k_in = %0.3f, wavevector = %s.
-             =====================""", 
-             lam, N, p_hat, w0, k_in, k_in_dir)
-    
-    # Normalization of vectors
-    p_hat /= (np.linalg.norm(p_hat) + 1e-15) # Dipole vector
-    k_in_hat = k_in_dir / (np.linalg.norm(k_in_dir) + 1e-15) # Incident wave wavevector
-    
-    # Construction of vectors arrays
-    ## Position vectors
-    #r_xyz = random_position(N, plane_restricted= False)
-    r_xyz = atom_grid(Nx, Ny, Nz, dx, dy,dz, plane_restricted= False)
-    
-    ## Velocity vectors
-    v_xyz = None #  random_velocity_thermal(r_xyz)
-    
-    ## Array factor Weights. 
-    w = gaussian_weights(r_xyz, w0, k_in_hat)
-    
-    # angle grid
-    theta, phi, nx, ny, nz = make_angle_grid(n_theta=241, n_phi=481) # Grid resolution
-    
-    # Falten directions array
-    n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
-
-    # dipole
-    dipole= single_dipole_E(nx,ny,nz, p_hat) 
-
-
-    # Compute
-    # ----------------------------
-    AF = array_factor_general(n_hat_flat, nz, k_out, r_xyz, w=w, chunk_atoms=20000)
-    I = intensity_from_field(AF, dipole)
-    I /= (I.max() + 1e-15)
-#    
-#    sanity_printing()
-    
-    # Plot
-    # ----------------------------
-    plot_atoms(r_xyz,w=w,p_hat = p_hat, k_in_hat =k_in_hat, v_xyz = v_xyz )
-    title = f"Radiation pattern: {Nx}x{Ny}, d={dx/lam:.2f}λ, w0={w0}"
-    plot_pattern_3d(nx, ny, nz, I, title=title, alpha=1.0, stride=2)
-#    
-#    # Optional: a theta cut at phi=0
-#    plot_planar_cuts(theta, phi, I, title_prefix="Theta cut (phi=0)")
-#    
-    plt.show()
