@@ -171,3 +171,21 @@ def make_weight_fn_gaussian_pulse(
     return w_fn
 
 
+
+def make_weight_fn_plane_wave(k_in_hat, k_in=1.0):
+    """ beam of plane wave front- creates the weights for the atoms being driven by a plane wave"""
+    
+    log.info("Creating weight function. Plane wave driving atoms. directuon k= %s", k_in_hat)
+
+    k_in_hat = np.asarray(k_in_hat, dtype=float)
+    k_in_hat = k_in_hat / (np.linalg.norm(k_in_hat) + 1e-15)
+
+    def w_fn(r_xyz, t, return_pulse_center=False):
+        r_xyz = np.asarray(r_xyz, dtype=float)
+        w = np.exp(-1j * k_in * (r_xyz @ k_in_hat)).astype(np.complex128)
+
+        if return_pulse_center:
+            return w, np.zeros(3, dtype=float)
+        return w
+
+    return w_fn
