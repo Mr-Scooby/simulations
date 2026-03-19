@@ -60,6 +60,7 @@ class PhysicalParams:
     # Interparticle distance a
     spacing: float = field(init=False)
     density: float = field(init=False)
+    atoms: int  = field(init=False) 
 
     # Beam / pulse scales
     beam_waist: float = field(init=False)
@@ -109,6 +110,9 @@ class PhysicalParams:
         self.beam_waist = r.illumination_ratio * self.L
         self.sigma_long = r.filling_factor * self.L
 
+        # Atom number
+        self.atoms = int(round(self.L / self.spacing )**3)
+
         # Choose thermal speed so that k v_th t_char = mot_dephase,
         # with t_char taken from pulse transit through the cloud => the time to cross the clod length. 
         try: 
@@ -141,7 +145,7 @@ class SimParams:
     grid_shape: int  = field(init = False) 
 
     # Performance / implementation
-    chunk_atoms: int = 20000
+    chunk_atoms: int = 2000
     normalize_each_time: bool = False
     plane_restricted: bool = False
     seed: int = None
