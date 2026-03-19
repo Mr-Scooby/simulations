@@ -68,7 +68,7 @@ def compute_realization_af_series_ballistic(
     r0_xyz: np.ndarray,
     v_xyz: np.ndarray,
     w_fn,
-    chunk_atoms: int = 20000,
+    chunk_atoms: int = 2000,
     **kwargs
 ) -> np.ndarray:
     """

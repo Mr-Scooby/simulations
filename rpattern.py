@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 # Flatten directions: n_hat_flat (M,3), M=nt*np
 #n_hat_flat = np.stack([nx, ny, nz], axis=-1).reshape(-1, 3)
 
-def array_factor_general(n_hat_flat, grid_shape, k_out, r_xyz, w=None, chunk_atoms=20000):
+def array_factor_general(n_hat_flat, grid_shape, k_out, r_xyz, w=None, chunk_atoms=2000):
     """
     General array factor:
         AF(n_hat) = sum_j w_j * exp(i k_out n_hat · r_j)
@@ -69,12 +69,12 @@ def array_factor_general(n_hat_flat, grid_shape, k_out, r_xyz, w=None, chunk_ato
     for a0 in range(0, N, chunk_atoms):
         ci = a0 // chunk_atoms + 1
         log.info("AF: chunk %d/%d", ci, n_chunks)
-        r = r_xyz[a0 : a0 + chunk_atoms]      # (C,3)
-        ww = w[a0 : a0 + chunk_atoms]         # (C,)
+        a1 = min(a0 + chunk_atoms, N)
+        r = r_xyz[a0:a1]
+        ww = w[a0:a1]
 
-        # dots: (M,C) = (k_out*n_hat_flat) @ r.T
-        dots = (k_out * n_hat_flat) @ r.T
-        AF_flat += np.exp(1j * dots) @ ww
+        phase = k_out * (n_hat_flat @ r.T)
+        AF_flat +=np.exp(1j * phase) @ ww
 
     log.info("AF: ended")
     return AF_flat.reshape(*grid_shape)

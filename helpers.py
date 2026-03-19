@@ -192,4 +192,25 @@ def atom_weights_sim(times, r_xyz, v_xyz, w_fn):
 
     return positions, weights, pulse_center
 
+def build_q_vec(n_hat, k_in_hat):
+    """
+    Build q-vector on the angular grid using
 
+        q = k_in_hat - n_hat
+
+    or equivalently Delta k / k in dimensionless form.
+
+    Parameters
+    ----------
+    n_hat : (..., 3)
+        Observation direction unit vectors.
+    k_in_hat : (3,)
+        Incoming direction unit vector.
+
+    Returns
+    -------
+    q_vec : (..., 3)
+    """
+    k_in_hat = np.asarray(k_in_hat, dtype=float)
+    k_in_hat = k_in_hat / np.linalg.norm(k_in_hat)
+    return k_in_hat[None, None, :] - n_hat

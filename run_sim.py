@@ -57,7 +57,7 @@ def main():
         regime=regime,
         wavelength=1,
         v_front=1.0,
-        v_thermal=0.01,
+        v_thermal=0.00,
         k_in_hat = [0,1,1],
         p_hat = [1,0,0],
         beam_r0 = 20,
@@ -67,7 +67,7 @@ def main():
     sim = stp.SimParams(
         n_atoms=1000,
         n_mc= 1,
-        t_max_factor = 2,
+        t_max_factor = 1,
         t_char= phys.t_char,
         n_times=100,
         n_theta=91,#241,#91
@@ -81,16 +81,18 @@ def main():
     theta, phi, nx, ny, nz = helpers.make_angle_grid(n_theta= sim.n_theta, n_phi=sim.n_phi)
     
     # weights 
-    w_fn = beam.make_weight_fn_gaussian_pulse(phys.beam_waist,
-                                              phys.sigma_long,
-                                              phys.k_in_hat,
-                                              phys.k0,
-                                              v_front = phys.v_front, 
-                                              box_size= phys.box_size, 
-                                              pulse_center_t0= phys.beam_r0,
-                                              pcenter_at_origin = phys.pcenter_atOrigin,
-                                              margin = 0
-                                                  )
+    #w_fn = beam.make_weight_fn_gaussian_pulse(phys.beam_waist,
+    #                                          phys.sigma_long,
+    #                                          phys.k_in_hat,
+    #                                          phys.k0,
+    #                                          v_front = phys.v_front, 
+    #                                          box_size= phys.box_size, 
+    #                                          pulse_center_t0= phys.beam_r0,
+    #                                          pcenter_at_origin = phys.pcenter_atOrigin,
+    #                                          margin = 0
+    #                                              )
+
+    w_fn =beam.make_weight_fn_plane_wave(k_in_hat=phys.k_in_hat, k_in=phys.k0)
     rng =  np.random.default_rng(0)
 #    r_xyz, v_xyz = mcpattern.sample_realization(sim.n_atoms, rng, v_std= phys.v_thermal) 
 #    position, weights, pulse_center = helpers.atom_weights_sim(sim.times,
