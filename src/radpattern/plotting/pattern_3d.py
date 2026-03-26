@@ -16,7 +16,7 @@ import logging
 log = logging.getLogger(__name__)
 
 # Plotting
-def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info_text=None,
+def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info_text=None, sphere_map = True ,log_plot = True, clip_limit = True,
     **kwargs ):
     """
     3D surface plot where radius = I^alpha.
@@ -29,6 +29,9 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
         Downsampling stride used by plot_surface.
     cmap : str, optional
         Matplotlib colormap used to color the surface.
+    
+    inputs:
+    -clip_limit :bool = True, limits the log plot to -60dB as below that is basically noise. set everything below that to 0. 
 
     """
 
@@ -39,15 +42,33 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
     # Convert intensity into a plotted radius
     # alpha < 1 expands weak regions visually
     # alpha > 1 compresses weak regions
-    R = I**alpha
-
+    if sphere_map: 
+        R = 1 
+    else:
+        R = I**alpha
     # Convert spherical direction field into Cartesian surface coordinates
     Xs = R * grid.nx
     Ys = R * grid.ny
     Zs = R * grid.nz
 
+
+    if log_plot: 
+        C = 10 * np.log10(I / np.max(I) + 1e-12)
+        norm = colors.Normalize(vmin=np.min(C), vmax=np.max(C))
+        title = title + " Log_plot"
+        clabel = "Intensity [dB]"
+        if clip_limit: 
+            C = np.clip(C, -60, 0)
+            norm = colors.Normalize(vmin=-60, vmax=0)
+        else:
+            norm = colors.Normalize(vmin=np.min(C), vmax=np.max(C))
+    else: 
     # Normalize intensity values for the colormap
-    norm = colors.Normalize(vmin=np.min(I), vmax=np.max(I))
+        norm = colors.Normalize(vmin=np.min(I), vmax=np.max(I))
+        C = I 
+        clabel = "Intensity"
+
+    #norm = colors.LogNorm(vmin=np.max(I)*1e-6, vmax=np.max(I))
 
     # Create figure and 3D axes
     fig = plt.figure(figsize = kwargs.get("figsize", (9, 7)),
@@ -61,7 +82,7 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
     ax.plot_surface(
         Xs, Ys, Zs,
         rstride=stride, cstride=stride,
-        facecolors=plt.get_cmap(cmap)(norm(I)),
+        facecolors=plt.get_cmap(cmap)(norm(C)),
         linewidth=kwargs.get("linewidth", 0),
         antialiased=kwargs.get("antialiased", True),
         shade=kwargs.get("shade", False)
@@ -71,7 +92,7 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
     mappable = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     mappable.set_array(I)
     cbar = fig.colorbar(mappable, ax=ax, shrink=0.7, pad=0.1)
-    cbar.set_label("Intensity")
+    cbar.set_label(clabel)
 
     # Set equal aspect ratio so the 3D pattern is not distorted
     ax.set_box_aspect([1, 1, 1])
@@ -91,6 +112,7 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
             info_text, 
             ha = kwargs.get("text_ha", "left"),
             va = kwargs.get("text_va", "bottom"),
+            family="monospace",
             fontsize = kwargs.get("text_fontsize", 10),
             bbox = kwargs.get("text_box",dict(boxstyle="round", facecolor="white", alpha=0.8)),
         )
@@ -99,3 +121,6 @@ def plot_pattern_3d(grid, I, title="", alpha=1.0, stride=2, cmap="viridis", info
     log.info("Plotting pattern 3D. Title = %s", title)
 
     return fig, ax
+
+
+
