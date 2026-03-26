@@ -16,7 +16,8 @@ class PhysicalRegime:
     """ Physical regime of the simualtion.  """ 
     # Box size. how large the cloud is compared to the wavelength, so how much spatial phase can build up across it.
     # L/lambda
-    optical_size : float = 100.0 
+    optical_size: float = 100.0      # transverse size
+    optical_size_z: float = 10.0     # longitudinal size
 
     # Interparticle spacing in units of wavelength. a/ lambda. We want a >sim lambda
     optical_spacing: float = 1.5 
@@ -33,7 +34,7 @@ class PhysicalRegime:
     pulse_transit : float = 1.5 
 
     def __post_init__(self):
-       io.log_attrs(log, self, ["optical_size", "optical_spacing", "illumination_ratio", "filling_factor", "pulse_transit"], "Physical Regimes: ")
+       io.log_attrs(log, self, ["optical_size", "optical_spacing", "optical_size_z", "illumination_ratio", "filling_factor", "pulse_transit"], "Physical Regimes: ")
 
 
 # ------------------------------------------------------------------
@@ -56,7 +57,10 @@ class PhysicalParams:
 
     # Cloud geometry
     # Simulation box size
-    L: float = field( init = False) 
+    L: float  = field( init = False)
+    Lx: float = field( init = False) 
+    Ly: float = field( init = False) 
+    Lz: float = field( init = False) 
     box_size: np.ndarray = field(init=False)
 
     # Microscopic scale
@@ -102,8 +106,11 @@ class PhysicalParams:
         
         # Characteristic cloud size
         self.L = r.optical_size * self.wavelength 
+        self.Lx = r.optical_size * self.wavelength
+        self.Ly = r.optical_size * self.wavelength
+        self.Lz = r.optical_size_z * self.wavelength
         # Simulation box size
-        self.box_size = np.array([self.L, self.L, self.L], dtype=float)
+        self.box_size = np.array([self.Lx, self.Ly, self.Lz], dtype=float)
 
         # Microscopic spacing and density
         self.spacing = r.optical_spacing * self.wavelength
@@ -111,7 +118,7 @@ class PhysicalParams:
 
         # Illumination / pulse scales
         self.beam_waist = r.illumination_ratio * self.L
-        self.sigma_long = r.filling_factor * self.L
+        self.sigma_long = r.filling_factor * self.Lz
 
         # Atom number
         self.atoms = int(round(self.L / self.spacing )**3)
