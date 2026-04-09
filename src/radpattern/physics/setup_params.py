@@ -3,6 +3,9 @@
 
 from dataclasses import dataclass, field, asdict
 from radpattern.helpers import io
+from radpattern.geometry.cloud_model import CloudModel
+from radpattern.geometry.grids import AngleGrid
+from radpattern.physics.beam import BeamModel
 import numpy as np
 import logging
 import hashlib
@@ -14,10 +17,13 @@ log = logging.getLogger(__name__)
 @dataclass
 class PhysicalRegime: 
     """ Physical regime of the simualtion.  """ 
+    geometry: str = "cylinder"
+    distribution:str = "gaussian"
+
     # Box size. how large the cloud is compared to the wavelength, so how much spatial phase can build up across it.
     # L/lambda
-    optical_size: float = 100.0      # transverse size
     optical_size_z: float = 10.0     # longitudinal size
+    aspect_ratio: float  = 100.0     # aspect ratio Lz/ Lxy 
 
     # Interparticle spacing in units of wavelength. a/ lambda. We want a >sim lambda
     optical_spacing: float = 1.5 
@@ -31,131 +37,147 @@ class PhysicalRegime:
 
     # Pulse transit. how far the pulse front has traveled through the cloud. for time parameters. 
     # v_front t / L_parrallel. 
-    pulse_transit : float = 1.5 
+#    pulse_transit : float = 1.5 
 
-    def __post_init__(self):
-       io.log_attrs(log, self, ["optical_size", "optical_spacing", "optical_size_z", "illumination_ratio", "filling_factor", "pulse_transit"], "Physical Regimes: ")
-
-
-# ------------------------------------------------------------------
-# Actual physical parameters
-@dataclass
-class PhysicalParams:
-    """
-    Physical scales used by the simulation.
-    By default we work in units where lambda = 1.
-    """
-
-    regime: PhysicalRegime = field(default_factory=PhysicalRegime)
-
-    # Optical units
-    wavelength: float = 1.0
-    k0: float = field(init=False)
-
-    # Input polarization
+    # Atom gaussian distributions. 
+    transverse_sigma_ratio: float = 0.1  # gaussian distribution sigma on the Lxy plane ratio. Sigma_T / Lxy 
+    longitudinal_sigma_ratio: float = 0.3 # Gaussian distribtion along Lz: sigma_l / Lz
+    
+    wavelength: float = 1
+    # dipole polarization
     p_hat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
 
-    # Cloud geometry
-    # Simulation box size
-    L: float  = field( init = False)
-    Lx: float = field( init = False) 
-    Ly: float = field( init = False) 
-    Lz: float = field( init = False) 
-    box_size: np.ndarray = field(init=False)
-
-    # Microscopic scale
-    # Interparticle distance a
-    spacing: float = field(init=False)
-    density: float = field(init=False)
-    atoms: int  = field(init=False) 
-
-    # Beam / pulse scales
-    beam_waist: float = field(init=False)
-    sigma_long: float = field(init=False)
-    # Incident beam direction
-    k_in_hat: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
-    # Position of the beam at t=0 in the direction of k_in. 
-    beam_r0: float = 0
-    pcenter_atOrigin: bool = False
-
-
-    # Motion / time 
-    v_front: float = 1.0
-    v_thermal: float = 0.001
-
-    # Dinamics
-    #characteristic time. time to cross the one atom cloud.
-    t_char: float = field(init=False)
-    # dephase due to thermal motion. 
-    mot_dephase: float = field(init=False)
-
-
-
-    ## Once class is called. __init__ is done. __post_init__ does the math. 
     def __post_init__(self):
-        r = self.regime
+        self.log_info()
 
-        self.k0 = 2 * np.pi / self.wavelength
+    @property 
+    def L_z (self): 
+        return self.optical_size_z * self.wavelength
+    @property
+    def L_xy (self): 
+        return self.L_z / self.aspect_ratio
+
+    @property 
+    def spacing (self):
+        return self.optical_spacing * self.wavelength
+    @property 
+    def density (self): 
+        return 1 / self.spacing **3 
+    @property
+    def beam_waist (self): 
+        return self.illumination_ratio * self.L_xy
+    @property 
+    def sigma_long (self): 
+        return self.filling_factor * self.L_z
+
+    @property
+    def k0 (self): 
+        return 2 * np.pi/ self.wavelength
+
+    @property 
+    def sigma_T(self): 
+        if self.transverse_sigma_ratio == None: 
+            return None 
+        return self.transverse_sigma_ratio * self.L_xy 
+    @property 
+    def sigma_z (self): 
+        if self.longitudinal_sigma_ratio == None: 
+            return None 
+        return self.longitudinal_sigma_ratio * self.L_z 
+
+    @property 
+    def R_eff (self):
+        """efective radius of beam. when r = 3w0 and thus the field is effectivlely zero, 
+        even pushing it too much, 2w0 is enough.o"""
+        return 3 * self.beam_waist
+
+    @property 
+    def L_eff (self):
+        """efective radius of beam Longitudinal. when r = 3w0 and thus the field is effectivlely zero, 
+        even pushing it too much, 2w0 is enough.o"""
+        return 3 * self.sigma_long
+
+
+    # to implement later
+    # Motion / time 
+    #v_front: float = 1.0
+    #v_thermal: float = 0.001
+
+
+    def make_cloud(self): 
+        log.info("Generating cloud") 
         
-        # Normalize propagation / polarization directions
-        self.k_in_hat = np.asarray(self.k_in_hat, dtype=float)
-        self.k_in_hat /= np.linalg.norm(self.k_in_hat)
+        if self.geometry == "cylinder" or self.geometry == "sphere": 
+            R = self.L_xy/2
+        else:
+            R = None
 
-        self.p_hat = np.asarray(self.p_hat, dtype=float)
-        self.p_hat /= np.linalg.norm(self.p_hat)
-        
-        # Characteristic cloud size
-        self.L = r.optical_size * self.wavelength 
-        self.Lx = r.optical_size * self.wavelength
-        self.Ly = r.optical_size * self.wavelength
-        self.Lz = r.optical_size_z * self.wavelength
-        # Simulation box size
-        self.box_size = np.array([self.Lx, self.Ly, self.Lz], dtype=float)
+        cloud =  CloudModel(
+            geometry=self.geometry,
+            distribution=self.distribution,
+            Lx=self.L_xy,
+            Ly=self.L_xy,
+            Lz=self.L_z,
+            R = R,
+            density=self.density,
+            sigma_x= self.sigma_T,
+            sigma_y= self.sigma_T, 
+            sigma_z= self.sigma_z, 
+        )
+        cloud.log_info()
+        return cloud
 
-        # Microscopic spacing and density
-        self.spacing = r.optical_spacing * self.wavelength
-        self.density = 1.0 / self.spacing**3
+    def log_info(self):
+         log.info("====================================================")
+         log.info("Physical regime summary")
+         log.info("All length units below are relative to wavelength lambda")
 
-        # Illumination / pulse scales
-        self.beam_waist = r.illumination_ratio * self.L
-        self.sigma_long = r.filling_factor * self.Lz
+         log.info("geometry                 = %s", self.geometry)
+         log.info("distribution             = %s", self.distribution)
 
-        # Atom number
-        self.atoms = int(round(self.L / self.spacing )**3)
+         log.info("optical_size_z           = %.6g", self.optical_size_z)
+         log.info("aspect_ratio             = %.6g", self.aspect_ratio)
+         log.info("optical_spacing          = %.6g", self.optical_spacing)
 
-        # Choose thermal speed so that k v_th t_char = mot_dephase,
-        # with t_char taken from pulse transit through the cloud => the time to cross the clod length. 
-        try: 
-            self.t_char = r.pulse_transit * self.L /self.v_front
-        except: 
-            # in case we want v =0. we set a default t_char of 10. 
-            self.t_char = 10
+         log.info("illumination_ratio       = %.6g", self.illumination_ratio)
+         log.info("Beam field region ratio R_eff/ Lxy = %.6g", self.R_eff/self.L_xy)
+         log.info("filling_factor           = %.6g", self.filling_factor)
+         log.info("Beam field region ratio L_eff/ L_z = %.6g", self.L_eff/self.L_z)
 
-        # Motional dephasing accumulated over t_char
-        self.mot_dephase = self.k0 * self.v_thermal * self.t_char
+         log.info("transverse_sigma_ratio   = %s", self.transverse_sigma_ratio)
+         log.info("longitudinal_sigma_ratio = %s", self.longitudinal_sigma_ratio)
+
+         log.info("wavelength               = %.6g", self.wavelength)
+         log.info("k0                       = %.6g", self.k0)
+         log.info("p_hat                    = %s", np.array2string(self.p_hat, precision=6))
+
+         log.info("L_z                      = %.6g lambda", self.L_z)
+         log.info("L_xy                     = %.6g lambda", self.L_xy)
+         log.info("spacing                  = %.6g lambda", self.spacing)
+         log.info("density                  = %.6g lambda^-3", self.density)
+         log.info("beam_waist               = %.6g lambda", self.beam_waist)
+         log.info("sigma_long               = %.6g lambda", self.sigma_long)
+         log.info("sigma_T                  = %s", "None" if self.sigma_T is None else f"{self.sigma_T:.6g} lambda")
+         log.info("sigma_z                  = %s", "None" if self.sigma_z is None else f"{self.sigma_z:.6g} lambda")
+
+         log.info("====================================================")
 
 
-        io.log_attrs(log, self, ["k_in_hat", "p_hat", "atoms"], "Phsyics Params")
 
 # 3) Simulation / numerical parameters
 # ------------------------------------------------------------------
 @dataclass
 class SimParams:
     """Numerical controls for the Monte Carlo simulation."""
-
-    n_atoms: int = 5000
     n_mc: int = 100
 
     # Time sampling
     t_max_factor: float = 1.5
-    t_char : float = 1
     n_times: int = 100
-    t_max: float = field(init = False) 
 
     # Angular grid
     n_theta: int = 91
     n_phi: int = 181
-    grid_shape: int  = field(init = False) 
 
     # Performance / implementation
     chunk_atoms: int = 2000
@@ -166,17 +188,18 @@ class SimParams:
     # File naming 
     # Computed run name: human-readable + hash from all params
 
-    def __post_init__(self):
-        self.t_max = self.t_max_factor * self.t_char
-        self.grid_shape = (self.n_theta, self.n_phi)
+    @property 
+    def grid_shape(self): 
+        return (self.n_theta, self.n_phi)
+   # @property
+   # def times(self) -> np.ndarray:
+   #     return np.linspace(0.0, self.t_max, self.n_times)
 
-        io.log_attrs(log, self, ["n_atoms", "n_theta", "n_phi", "grid_shape", "chunk_atoms"], "Sim Params") 
+    def create_grid(self):
+       return AngleGrid(self.n_theta, self.n_phi )
 
-    @property
-    def times(self) -> np.ndarray:
-        return np.linspace(0.0, self.t_max, self.n_times)
-
-    
+    def sim_metadataSetUp(self, regime, beam): 
+        return SetupParams(regime, self, beam)
 
 
 def _k_tag(k_hat) -> str:
@@ -186,8 +209,8 @@ def _k_tag(k_hat) -> str:
 class SetupParams:
     """ Stores metadata and creates run naming """
     regime: PhysicalRegime
-    phys: PhysicalParams
     sim: SimParams
+    beam: BeamModel
 
     # Computed run name: human-readable + hash from all params
     @property
@@ -195,29 +218,20 @@ class SetupParams:
         # hash full setup
         d = {
             "regime": asdict(self.regime),
-            "phys": asdict(self.phys),
             "sim": asdict(self.sim),
+            "cloud": asdict(self.sim),
         }
         h = hashlib.sha1(
             json.dumps(d, sort_keys=True, default=str).encode()
         ).hexdigest()[:8]
 
         return (
-            f"N{self.sim.n_atoms}"
+            f"rho{round(self.regime.density)}"
             f"_mc{self.sim.n_mc}"
             f"_nt{self.sim.n_times}"
-            f"_{_k_tag(self.phys.k_in_hat)}"
+            f"_{_k_tag(self.beam.k_in_hat)}"
             f"_{h}"
         )
 
 
-def log_main_params(log, main) -> None:
-    log.info("==== Main control parameters ====")
-    log.info("k_in_hat           = %s", main.k_in_hat)
-    log.info("density            = %.6g", main.density)
-    log.info("pulse_duration     = %.6g", main.pulse_duration)
-    log.info("pulse_speed        = %.6g", main.pulse_speed)
-    log.info("pulse_waist        = %.6g", main.pulse_waist)
-    log.info("thermal_velocity   = %.6g", main.thermal_velocity)
-    log.info("beam_cloud_overlap = %.6g", main.beam_cloud_overlap)
-    log.info("=================================")
+

@@ -26,7 +26,7 @@ def make_angle_grid(n_theta=241, n_phi=481):
     nz = np.cos(TH)
 
     log.info("Building angle grid. Resolution %d x %d", n_theta, n_phi) 
-    return theta, phi, nx, ny, nz
+    return TH, PH, nx, ny, nz
 
 # Dipole pattern
 PZ_HAT = np.array([0.0, 0.0, 1.0], dtype=float) # +z vector 
