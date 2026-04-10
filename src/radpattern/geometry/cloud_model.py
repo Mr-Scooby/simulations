@@ -83,6 +83,15 @@ class CloudModel:
         log.info("Constructing atom positions...") 
         return make_positions(self, rng=rng)
 
+
+    ## For later. 
+    # def make_velocity_distribution
+        # return velocty array 
+    
+    # def update_position( time): 
+        # Ballistic motion update
+
+
     def log_info(self):
         """ summary of the cloud being simulated. All lengths in units of wavelength."""
         log.info("====================================================")
