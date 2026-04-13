@@ -106,6 +106,30 @@ class BeamModel:
             return np.zeros(3, dtype=float)
         return self.r_front0 + self.v_front * float(t) * self.k_in_hat
 
+    def generate_S_profile(self, r_xyz, cloud,  t:float = 0.0): 
+        """ Generates Spin_wave profile from paper. asymetric distribution skweed to the end of the cloud"""
+
+        r_xyz = np.asarray(r_xyz, dtype=float)
+        z = r_xyz[:, 2]
+
+        zmin = -cloud.Lz / 2.0
+        zmax = +cloud.Lz / 2.0
+        Lz = zmax - zmin
+
+        if Lz <= 0:
+            raise ValueError("cloud.Lz must be > 0")
+
+        # Reduced coordinate in [0,1]
+        z_tilde = (z - zmin) / Lz
+        z_tilde = np.clip(z_tilde, 0.0, 1.0)
+
+        # |S|^2 = 2 z_tilde  ->  integral_0^1 |S|^2 dz = 1
+        amp = np.sqrt(2.0 * z_tilde)
+
+        phase = np.exp(-1j * self.k_in * (r_xyz @ self.k_in_hat))
+
+        S = amp.astype(np.complex128) * phase
+        return S
 
 
 
