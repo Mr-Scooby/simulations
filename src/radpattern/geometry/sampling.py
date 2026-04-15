@@ -8,24 +8,27 @@ import logging
 
 log = logging.getLogger(__name__)
 
-def sample_axis(rng, half_length: float, sigma: float, n: int) -> np.ndarray:
+def sample_axis(rng, cloud, axis)  -> np.ndarray:
     """ Samples the atom pos for one dimensional axis. random or gaussian distribution"""
 
-    if sigma is None:
-        return rng.uniform(-half_length, half_length, size=n)
-    return rng.normal(0.0, sigma, size=n)
+    half_length = {"x": cloud.Lx/2, "y": cloud.Ly/2, "z":cloud.Lz/2} 
+    sigmas = {"x": cloud.sigma_x, "y": cloud.sigma_y, "z":cloud.sigma_z} 
+    n = int(cloud.n_atoms **( 1/3)) # scale teh number of atoms per axis. 
+
+    if cloud.distribution.strip() is "random" :
+        return rng.uniform(-half_length[axis], half_length[axis], size=n)
+    return rng.normal(0.0, sigmas[axis], size=n)
 
 
-def generate_candidates_box(cloud, n: int, rng) -> np.ndarray:
+def generate_candidates_box(cloud, rng) -> np.ndarray:
     """ generates box with atoms position. size volumen  cloud.Lx * cloud.Ly * cloud.Lz  """
 
     if cloud.Lx is None or cloud.Ly is None or cloud.Lz is None:
         raise ValueError("Box requires Lx, Ly, Lz")
 
-    n = int(n **( 1/3)) # scale teh number of atoms per axis. 
-    x = sample_axis(rng, cloud.Lx / 2.0, cloud.sigma_x, n)
-    y = sample_axis(rng, cloud.Ly / 2.0, cloud.sigma_y, n)
-    z = sample_axis(rng, cloud.Lz / 2.0, cloud.sigma_z, n)
+    x = sample_axis(rng,cloud, "x")
+    y = sample_axis(rng,cloud, "y")
+    z = sample_axis(rng,cloud, "z")
 
     return np.column_stack([x, y, z])
 
@@ -67,7 +70,7 @@ def sample_with_mask(cloud, mask_fn, rng) -> np.ndarray:
     n_kept = 0
 
     while n_kept < cloud.n_atoms:
-        xyz_try = generate_candidates_box(cloud,cloud.n_atoms , rng)
+        xyz_try = generate_candidates_box(cloud, rng)
         keep = mask_fn(xyz_try, cloud)
         xyz_keep = xyz_try[keep]
 

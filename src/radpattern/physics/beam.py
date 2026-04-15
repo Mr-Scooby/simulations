@@ -124,11 +124,17 @@ class BeamModel:
         z_tilde = np.clip(z_tilde, 0.0, 1.0)
 
         # |S|^2 = 2 z_tilde  ->  integral_0^1 |S|^2 dz = 1
-        amp = np.sqrt(2.0 * z_tilde)
+        eps = 1e-3
+        alpha = -2.4
+        b = -1.2
+        amp = 1.5 - ( b - alpha *  z_tilde + eps)**2
 
+        norm_factor = sum( np.abs(amp)**2) 
+        amp = amp / np.sqrt(norm_factor)
         phase = np.exp(-1j * self.k_in * (r_xyz @ self.k_in_hat))
 
         S = amp.astype(np.complex128) * phase
+
         return S
 
 
@@ -274,6 +280,8 @@ class BeamModel:
                 r = r0 + u_par * self.k_in_hat
                 w = self.generate_weights(r[None, :], t=t)[0]
                 print(f"  at {sgn*n:+d} sigma_long: u_par={u_par:>8.4f}, |w|={abs(w):.3e}")
+
+
 
 
 #    def make_weight_fn_gaussian_pulse(

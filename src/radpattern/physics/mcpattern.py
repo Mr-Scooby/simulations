@@ -166,13 +166,16 @@ def static_AF_calculation(cloud, beam, grid, rng = None):
     """ Single shot computation of the cloud and beam """ 
 
     r_xyz = cloud.make_positions(rng)
-    w = beam.generate_weights(r_xyz, t=0.0)
+    #w = beam.generate_weights(r_xyz, t=0.0)
+    s = beam.generate_S_profile(r_xyz, cloud )
+    log.info("Creating polarizaation P = w0 * S ... ")
+    log.info("Array factor calcualtion with P = w0 * S" )
     return array_factor_general(
         n_hat_flat=grid.n_hat_flat,
         grid_shape=grid.shape,
         k_out= beam.k_in,
         r_xyz=r_xyz,
-        w=w,
+        w=s,
         )
 
 grid = AngleGrid()
@@ -184,6 +187,7 @@ def mc_static(cloud, beam, grid, runs, seed = 0):
     AF2_acc = np.zeros(grid.shape, dtype=float)
     AF_acc = np.zeros(grid.shape, dtype=complex)
 
+    log.info("Array factor calcualtion with P = w0 * S" )
     # Random generator object, helps to reproduce runs. 
     rng_master = np.random.default_rng(seed)
     # time to measure how long it takes. 

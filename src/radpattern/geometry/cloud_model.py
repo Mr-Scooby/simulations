@@ -50,7 +50,7 @@ class CloudModel:
             log.debug("Calculating volume for geom. = cylinder") 
             return  np.pi * self.R**2 * self.Lz
         else: 
-            raise ValueError(f"No volumen formula define yet for geometry= {self.geometry}")
+            raise ValueError(f"No volumen formula define yet for geometry= {self.geometry}\n Valid current geometries: box, sphere, cylinder")
 
     #@property 
     #def spacing(self):
